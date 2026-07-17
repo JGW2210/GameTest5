@@ -248,6 +248,7 @@ body {
   z-index: 9;
 }
 #dialogue.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+#dialogue.focus { top: 66%; }
 #dialogue-name {
   font-size: 12px;
   letter-spacing: 5px;

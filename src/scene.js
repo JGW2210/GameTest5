@@ -2,7 +2,7 @@
 // platform, torches, ember particles, and the portal ring Kinaeto uses.
 
 import * as THREE from 'three';
-import { CAMERA, COLORS, OBELISK_POS, PORTAL_POS, PATH_X, rowZ, ROWS } from './config.js';
+import { CAMERA, CAMERA_POSES, COLORS, OBELISK_POS, PORTAL_POS, PATH_X, rowZ, ROWS } from './config.js';
 
 function jitterGeometry(geo, amount) {
   const pos = geo.attributes.position;
@@ -43,7 +43,14 @@ export class World {
 
     this.time = 0;
     this.shake = 0;
-    this.basePos = this.camera.position.clone();
+    // Cursor-driven vertical glance: -1 = bottom (path mouths), +1 = top
+    // (full obelisk). Focus overrides the glance for Kinaeto close-ups.
+    this.glance = 0;
+    this.glanceTarget = 0;
+    this.focus = 0;
+    this.focusTarget = 0;
+    this.rigEnabled = true;
+    this._pose = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
     this.torchFlames = [];
     this.torchLights = [];
 
@@ -331,14 +338,31 @@ export class World {
     }
     pos.needsUpdate = true;
 
-    // Gentle camera breathing + impact shake
+    // Camera rig: glance blend + Kinaeto focus blend + breathing + shake.
+    if (this.rigEnabled) {
+      this.glance += (this.glanceTarget - this.glance) * Math.min(dt * 3.2, 1);
+      this.focus += (this.focusTarget - this.focus) * Math.min(dt * 2.4, 1);
+    }
+    const P = CAMERA_POSES;
+    const glancePose = this.glance < 0 ? P.bottom : P.top;
+    const g = Math.abs(this.glance);
+    const pose = this._pose;
+    pose.pos.fromArray(P.default.pos);
+    pose.look.fromArray(P.default.look);
+    pose.pos.lerp(new THREE.Vector3().fromArray(glancePose.pos), g);
+    pose.look.lerp(new THREE.Vector3().fromArray(glancePose.look), g);
+    const f = this.focus * this.focus * (3 - 2 * this.focus); // smoothstep
+    pose.pos.lerp(new THREE.Vector3().fromArray(P.kinaeto.pos), f);
+    pose.look.lerp(new THREE.Vector3().fromArray(P.kinaeto.look), f);
+
     this.shake = Math.max(this.shake - dt * 1.8, 0);
     const s = this.shake;
     this.camera.position.set(
-      this.basePos.x + Math.sin(t * 0.4) * 0.12 + (Math.random() - 0.5) * s,
-      this.basePos.y + Math.sin(t * 0.55) * 0.08 + (Math.random() - 0.5) * s,
-      this.basePos.z + (Math.random() - 0.5) * s * 0.5
+      pose.pos.x + Math.sin(t * 0.4) * 0.12 + (Math.random() - 0.5) * s,
+      pose.pos.y + Math.sin(t * 0.55) * 0.08 + (Math.random() - 0.5) * s,
+      pose.pos.z + (Math.random() - 0.5) * s * 0.5
     );
+    this.camera.lookAt(pose.look.x, pose.look.y + Math.sin(t * 0.5) * 0.05, pose.look.z);
   }
 
   render() {

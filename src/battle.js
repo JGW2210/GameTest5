@@ -54,7 +54,7 @@ export class Battle {
 
   start() {
     const events = [];
-    this.drawHand();
+    this.drawCards(RULES.drawPerTurn);
     events.push(this.turnStartEvent());
     const first = this.def.waves[0];
     if (first && first.warnAtEnd === 0) events.push(this.makeWarn(first));
@@ -71,8 +71,11 @@ export class Battle {
     };
   }
 
-  drawHand() {
-    while (this.hand.length < RULES.handSize) {
+  // Draw up to n cards, never past the hand cap; undrawn cards stay in the
+  // deck for future turns. Played cards cycle back in via the discard pile.
+  drawCards(n) {
+    for (let i = 0; i < n; i++) {
+      if (this.hand.length >= RULES.handMax) break;
       if (this.deck.length === 0) {
         if (this.discard.length === 0) break;
         this.deck = shuffle(this.discard);
@@ -244,9 +247,7 @@ export class Battle {
     this.emitDueWarn(events);
     if (this.checkEnd(events)) return events;
 
-    // next turn
-    this.discard.push(...this.hand);
-    this.hand = [];
+    // next turn — the hand carries over; draw more up to the cap
     this.turn++;
     this.maxEnergy = Math.min(
       RULES.startEnergy + Math.floor((this.turn - 1) / RULES.energyGrowthEveryTurns),
@@ -254,7 +255,7 @@ export class Battle {
     );
     this.energy = this.maxEnergy;
     this.tkUsed = 0;
-    this.drawHand();
+    this.drawCards(RULES.drawPerTurn);
     events.push(this.turnStartEvent());
     return events;
   }

@@ -110,7 +110,7 @@ export class Kinaeto {
 
     // Hidden inside the portal until called.
     this.homePos = new THREE.Vector3(PORTAL_POS.x, PORTAL_POS.y, PORTAL_POS.z);
-    this.outPos = new THREE.Vector3(PORTAL_POS.x, PORTAL_POS.y - 0.6, PORTAL_POS.z + 3.4);
+    this.outPos = new THREE.Vector3(PORTAL_POS.x, PORTAL_POS.y - 0.6, PORTAL_POS.z + 4.2);
     this.group.position.copy(this.homePos);
     this.group.scale.setScalar(0.01);
     this.group.rotation.x = 0.16;

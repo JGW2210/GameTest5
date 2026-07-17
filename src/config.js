@@ -20,16 +20,25 @@ export const TILE_H = 0.28;
 export const UNIT_Y = TILE_H; // top surface of tiles
 
 export const OBELISK_POS = { x: 0, y: 0, z: -12.6 };
-export const PORTAL_POS = { x: 0, y: 4.4, z: -15.4 };
+// The portal floats above the obelisk tip so Kinaeto's hand never clips the spire.
+export const PORTAL_POS = { x: 0, y: 9.6, z: -15.4 };
 
+// Camera poses for the cursor-driven vertical glance and the Kinaeto close-up.
 export const CAMERA = {
   fov: 42,
   pos: { x: 0, y: 16.5, z: 18 },
   look: { x: 0, y: -0.5, z: -1.2 },
 };
+export const CAMERA_POSES = {
+  default: { pos: [0, 16.5, 18], look: [0, -0.5, -1.2] },
+  bottom: { pos: [0, 15, 17.5], look: [0, -0.8, 5.2] },
+  top: { pos: [0, 12.2, 13.2], look: [0, 4.8, -9.8] },
+  kinaeto: { pos: [0, 10.4, -1.2], look: [0, 8.9, -13.6] },
+};
 
 export const RULES = {
-  handSize: 5,
+  drawPerTurn: 5,
+  handMax: 10,
   startEnergy: 3,
   maxEnergy: 7,
   energyGrowthEveryTurns: 2, // +1 max energy every N turns

@@ -26,7 +26,8 @@ half**, the bottom 3 are the **enemy half**. Enemies emerge at the path mouths a
 tile by tile toward the obelisk; if they reach it, they batter it down. Lose the obelisk
 and the battle is lost. Defeat every wave and it is won.
 
-Each turn you draw **5 cards** of followers and spend **Kinaetic energy** to place them:
+You start with **5 cards** and draw **5 more each turn** (hand cap of 10 — undrawn cards
+wait in the deck), spending **Kinaetic energy** to place followers:
 
 | Type | Behaviour |
 | --- | --- |
@@ -59,10 +60,14 @@ his whole path every second turn.
 
 ## Controls
 
-- **Drag a card** from the fan onto a glowing tile to place a follower
+- **Drag a card** from the fan onto a glowing tile to place a follower — cards tilt and
+  spring toward the cursor, and the dragged card follows it
 - **Telekinesis panel** (right): pick a power, click a target unit, then a destination tile
 - **Right-click / Esc** cancels; **End Turn** resolves the round
-- Click the dialogue box to advance Kinaeto's lines
+- **Camera glance**: move the cursor to the bottom of the screen to peek at the path
+  mouths (and incoming-wave sigils) above your hand; move it to the top to frame the
+  full obelisk. During dialogue the camera pans up to Kinaeto himself
+- **Click or Space** advances Kinaeto's dialogue (it waits for you)
 
 ## Deployment
 

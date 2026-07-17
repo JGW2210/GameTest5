@@ -199,14 +199,29 @@ const CARD_W = 0.82;
 const CARD_H = 1.15;
 const HAND_Z = -4;
 
+const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
+
+// The hand lives in camera space; every card springs smoothly toward a target
+// pose recomputed each frame. Hovered cards lift and tilt toward the cursor;
+// a dragged card follows the cursor with a velocity sway.
 export class CardHand {
   constructor(camera) {
+    this.camera = camera;
     this.group = new THREE.Group();
     camera.add(this.group);
     this.meshes = [];
     this.hoverIndex = -1;
+    this.dragIndex = -1;
     this.geo = new THREE.PlaneGeometry(CARD_W, CARD_H);
-    this.backMat = new THREE.MeshBasicMaterial({ color: 0x241a33, fog: false });
+    this.pointer = { x: 0, y: -1.6 }; // camera-space coords on the hand plane
+    this.pointerVel = { x: 0, y: 0 };
+  }
+
+  // Convert pointer NDC to camera-space coordinates at the hand plane depth.
+  setPointerNDC(nx, ny) {
+    const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * Math.abs(HAND_Z);
+    const halfW = halfH * this.camera.aspect;
+    this.pointerTarget = { x: nx * halfW, y: ny * halfH };
   }
 
   setHand(keys, energy) {
@@ -220,11 +235,14 @@ export class CardHand {
       const mesh = new THREE.Mesh(this.geo, mat);
       mesh.renderOrder = 30 + i;
       mesh.userData = { isCard: true, index: i, key };
+      // Deal-in: new cards rise from below the frame.
+      mesh.position.set(0, -3.2, HAND_Z + i * 0.012);
       this.group.add(mesh);
       this.meshes.push(mesh);
     });
+    this.hoverIndex = -1;
+    this.dragIndex = -1;
     this.setAffordable(energy);
-    this.layout();
   }
 
   setAffordable(energy) {
@@ -236,29 +254,12 @@ export class CardHand {
     }
   }
 
-  layout() {
-    const n = this.meshes.length;
-    const spread = Math.min(0.78, 3.4 / Math.max(n, 1));
-    this.meshes.forEach((m, i) => {
-      const off = i - (n - 1) / 2;
-      const hovered = i === this.hoverIndex;
-      m.userData.baseX = off * spread;
-      m.userData.baseY = -1.52 + Math.cos(off * 0.28) * 0.16 + (hovered ? 0.72 : 0);
-      m.position.set(m.userData.baseX, m.userData.baseY, HAND_Z + i * 0.012 + (hovered ? 0.35 : 0));
-      m.rotation.z = hovered ? 0 : -off * 0.085;
-      m.scale.setScalar(hovered ? 1.28 : 1);
-    });
-  }
-
   setHover(index) {
-    if (index === this.hoverIndex) return;
     this.hoverIndex = index;
-    this.layout();
   }
 
   setDragging(index, dragging) {
-    const m = this.meshes[index];
-    if (m) m.visible = !dragging;
+    this.dragIndex = dragging ? index : -1;
   }
 
   removeCardVisual(index) {
@@ -269,6 +270,71 @@ export class CardHand {
     this.meshes.splice(index, 1);
     this.meshes.forEach((mm, i) => (mm.userData.index = i));
     this.hoverIndex = -1;
-    this.layout();
+    this.dragIndex = -1;
+  }
+
+  update(dt) {
+    // Smooth the pointer itself, tracking velocity for drag sway.
+    if (this.pointerTarget) {
+      const px = this.pointer.x;
+      const py = this.pointer.y;
+      const pk = 1 - Math.exp(-dt * 22);
+      this.pointer.x += (this.pointerTarget.x - this.pointer.x) * pk;
+      this.pointer.y += (this.pointerTarget.y - this.pointer.y) * pk;
+      if (dt > 0) {
+        this.pointerVel.x = (this.pointer.x - px) / dt;
+        this.pointerVel.y = (this.pointer.y - py) / dt;
+      }
+    }
+
+    const n = this.meshes.length;
+    const spread = Math.min(0.74, 4.6 / Math.max(n, 1));
+    const k = 1 - Math.exp(-dt * 11);
+
+    this.meshes.forEach((m, i) => {
+      const off = i - (n - 1) / 2;
+      const hovered = i === this.hoverIndex && this.dragIndex === -1;
+      const dragged = i === this.dragIndex;
+
+      let tx, ty, tz, rx, ry, rz, ts;
+      if (dragged) {
+        tx = this.pointer.x;
+        ty = this.pointer.y;
+        tz = HAND_Z + 0.6;
+        ts = 0.62;
+        // sway against the direction of travel
+        ry = clamp(this.pointerVel.x * 0.06, -0.5, 0.5);
+        rx = clamp(-this.pointerVel.y * 0.05, -0.4, 0.4);
+        rz = clamp(-this.pointerVel.x * 0.03, -0.25, 0.25);
+      } else {
+        tx = off * spread;
+        ty = -1.52 + Math.cos(off * 0.28) * 0.16;
+        tz = HAND_Z + i * 0.012;
+        rx = 0;
+        ry = 0;
+        rz = -off * 0.085;
+        ts = 1;
+        if (hovered) {
+          ty += 0.72;
+          tz += 0.35;
+          ts = 1.28;
+          rz = 0;
+          // tilt toward wherever the cursor sits on the card face
+          const nx = clamp((this.pointer.x - tx) / ((CARD_W * ts) / 2), -1, 1);
+          const nyy = clamp((this.pointer.y - ty) / ((CARD_H * ts) / 2), -1, 1);
+          ry = nx * 0.34;
+          rx = -nyy * 0.26;
+        }
+      }
+
+      m.position.x += (tx - m.position.x) * k;
+      m.position.y += (ty - m.position.y) * k;
+      m.position.z += (tz - m.position.z) * k;
+      m.rotation.x += (rx - m.rotation.x) * k;
+      m.rotation.y += (ry - m.rotation.y) * k;
+      m.rotation.z += (rz - m.rotation.z) * k;
+      const s = m.scale.x + (ts - m.scale.x) * k;
+      m.scale.setScalar(s);
+    });
   }
 }

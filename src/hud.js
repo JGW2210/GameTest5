@@ -42,6 +42,12 @@ export class Hud {
       if (!this.el.endTurn.disabled && this.onEndTurn) this.onEndTurn();
     });
     this.el.dialogue.addEventListener('click', () => this.advanceDialogue());
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && this._dialogueResolve) {
+        e.preventDefault();
+        this.advanceDialogue();
+      }
+    });
   }
 
   setTurn(turn) {
@@ -106,8 +112,8 @@ export class Hud {
     this._toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
   }
 
-  // Shows lines one at a time; click (or auto-timeout) advances. Resolves when
-  // every line has been shown.
+  // Shows lines one at a time; only a click (or Space) advances. Resolves when
+  // every line has been shown and dismissed.
   dialogue(lines) {
     this._dialogueQueue = Array.isArray(lines) ? lines.slice() : [lines];
     this.el.dialogue.classList.add('show');
@@ -118,10 +124,7 @@ export class Hud {
   }
 
   nextDialogueLine() {
-    const line = this._dialogueQueue.shift();
-    this.el.dialogueText.textContent = line;
-    clearTimeout(this._dialogueTimer);
-    this._dialogueTimer = setTimeout(() => this.advanceDialogue(), 4200);
+    this.el.dialogueText.textContent = this._dialogueQueue.shift();
   }
 
   advanceDialogue() {
@@ -129,12 +132,16 @@ export class Hud {
     if (this._dialogueQueue.length > 0) {
       this.nextDialogueLine();
     } else {
-      clearTimeout(this._dialogueTimer);
       this.el.dialogue.classList.remove('show');
       const r = this._dialogueResolve;
       this._dialogueResolve = null;
       r();
     }
+  }
+
+  // Dock the dialogue box beneath Kinaeto during his close-up.
+  setDialogueDock(focused) {
+    this.el.dialogue.classList.toggle('focus', focused);
   }
 
   showScreen(kind, onAction) {

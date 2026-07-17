@@ -95,6 +95,7 @@ function setMode(next) {
   mode = next;
   board.clearHighlights();
   ghost.visible = false;
+  if (next !== 'idle') world.glanceTarget = 0;
   const hints = {
     idle: 'Drag a card onto a glowing tile — or channel a telekinetic power from the right panel.',
     dragCard: 'Drop the follower on a glowing tile.',
@@ -253,10 +254,18 @@ async function animateDeath(uid) {
 
 const WARN_LINES = [DIALOGUE.wave1Warn, DIALOGUE.wave2Warn, DIALOGUE.wave3Warn, DIALOGUE.bossWarn];
 
+// Camera pans up to frame the portal while Kinaeto speaks; the hand of cards
+// tucks away and the dialogue box docks beneath him.
 async function kinaetoSpeaks(lines) {
+  cardHand.group.visible = false;
+  world.focusTarget = 1;
+  hud.setDialogueDock(true);
   await kinaeto.emerge();
   await hud.dialogue(lines);
   await kinaeto.retreat();
+  hud.setDialogueDock(false);
+  world.focusTarget = 0;
+  cardHand.group.visible = true;
 }
 
 async function processEvents(events) {
@@ -440,6 +449,16 @@ async function processEvents(events) {
 window.addEventListener('pointermove', (e) => {
   if (!battle || battle.over) return;
   setPointer(e);
+  cardHand.setPointerNDC(pointer.x, pointer.y);
+  // Vertical glance: cursor near the hand peeks at the path mouths and their
+  // warning sigils; cursor near the top frames the full obelisk.
+  if (mode === 'idle') {
+    if (pointer.y < -0.4) world.glanceTarget = -Math.min(1, (-pointer.y - 0.4) / 0.35);
+    else if (pointer.y > 0.45) world.glanceTarget = Math.min(1, (pointer.y - 0.45) / 0.35);
+    else world.glanceTarget = 0;
+  } else {
+    world.glanceTarget = 0;
+  }
   if (mode === 'idle') {
     const card = pickCard();
     cardHand.setHover(card ? card.userData.index : -1);
@@ -613,6 +632,7 @@ function animate() {
   world.update(dt);
   board.update(dt);
   kinaeto.update(dt);
+  cardHand.update(dt);
   tweens.update(dt);
   for (const v of unitViews.values()) updateUnitGroup(v.group, dt);
   world.render();
