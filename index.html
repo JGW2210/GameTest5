@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>KINAETO — Beneath the Flame</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🜏</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.min.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- top bar -->
+  <div id="topbar">
+    <div class="top-group">
+      <div id="hud-turn">Turn 1</div>
+      <div id="hud-wave">Wave 0 / 4</div>
+    </div>
+    <div id="obelisk-wrap">
+      <div id="hud-obelisk-text">OBELISK 20 / 20</div>
+      <div id="obelisk-bar"><div id="hud-obelisk-fill"></div></div>
+    </div>
+    <div class="top-group right">
+      <div id="hud-deck">Deck 0</div>
+      <div id="hud-discard">Discard 0</div>
+    </div>
+  </div>
+
+  <!-- telekinesis panel -->
+  <div id="tk-panel">
+    <div id="tk-title">TELEKINESIS</div>
+    <button class="tk-btn" data-power="move"><span class="tk-name">Move</span><span class="tk-desc">Lift any unit one tile</span></button>
+    <button class="tk-btn" data-power="push"><span class="tk-name">Push</span><span class="tk-desc">Hurl a unit 2 tiles along its path</span></button>
+    <button class="tk-btn" data-power="crush"><span class="tk-name">Crush</span><span class="tk-desc">Clench: 3 damage</span></button>
+    <button class="tk-btn" data-power="trip"><span class="tk-name">Trip</span><span class="tk-desc">Sweep the legs: stun a turn</span></button>
+    <div id="tk-status">KINAETO REACHES THROUGH YOU</div>
+  </div>
+
+  <!-- energy + end turn -->
+  <div id="energy-wrap">
+    <div id="energy-label">KINAETIC ENERGY</div>
+    <div id="hud-energy"></div>
+  </div>
+  <button id="btn-endturn">END TURN</button>
+
+  <!-- transient messaging -->
+  <div id="banner"></div>
+  <div id="toast"></div>
+  <div id="hint"></div>
+
+  <!-- Kinaeto dialogue -->
+  <div id="dialogue">
+    <div id="dialogue-name">◉ KINAETO</div>
+    <div id="dialogue-text"></div>
+    <div id="dialogue-more">click to continue</div>
+  </div>
+
+  <!-- menu / victory / defeat -->
+  <div id="overlay"></div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

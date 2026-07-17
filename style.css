@@ -1,0 +1,310 @@
+:root {
+  --violet: #9b6cff;
+  --violet-dim: #6a48b8;
+  --eldritch: #59f0c8;
+  --parchment: #efe6d2;
+  --dim: #a89bbf;
+  --panel: rgba(16, 10, 24, 0.82);
+  --border: rgba(155, 108, 255, 0.35);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; overflow: hidden; background: #0d0708; }
+
+body {
+  font-family: Georgia, 'Times New Roman', serif;
+  color: var(--parchment);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#game { position: fixed; inset: 0; display: block; }
+
+/* ---------- top bar ---------- */
+
+#topbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 14px 20px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.top-group {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  min-width: 110px;
+}
+
+.top-group.right { text-align: right; }
+
+#hud-turn { font-size: 18px; font-weight: bold; letter-spacing: 1px; }
+#hud-wave, #hud-deck, #hud-discard { font-size: 13px; color: var(--dim); margin-top: 2px; }
+
+#obelisk-wrap { text-align: center; width: 340px; }
+#hud-obelisk-text {
+  font-size: 13px; letter-spacing: 3px; color: var(--violet);
+  text-shadow: 0 0 10px rgba(155, 108, 255, 0.6);
+  margin-bottom: 4px;
+}
+#obelisk-bar {
+  height: 12px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+#hud-obelisk-fill {
+  height: 100%; width: 100%;
+  background: linear-gradient(90deg, #6a48b8, #b08aff);
+  box-shadow: 0 0 12px rgba(155, 108, 255, 0.8);
+  transition: width 0.4s ease;
+}
+#hud-obelisk-fill.low { background: linear-gradient(90deg, #a8302a, #ff6a5a); }
+
+/* ---------- telekinesis panel ---------- */
+
+#tk-panel {
+  position: fixed;
+  right: 16px;
+  top: 50%;
+  transform: translateY(-58%);
+  width: 190px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  z-index: 5;
+}
+
+#tk-title {
+  text-align: center;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--eldritch);
+  text-shadow: 0 0 10px rgba(89, 240, 200, 0.5);
+  margin-bottom: 10px;
+}
+
+.tk-btn {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  background: rgba(155, 108, 255, 0.1);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--parchment);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.tk-btn:hover:not(:disabled) { background: rgba(155, 108, 255, 0.28); transform: translateX(-3px); }
+.tk-btn.selected { border-color: var(--eldritch); background: rgba(89, 240, 200, 0.18); }
+.tk-btn:disabled { opacity: 0.35; cursor: default; }
+.tk-name { display: block; font-weight: bold; font-size: 15px; }
+.tk-desc { display: block; font-size: 11px; color: var(--dim); margin-top: 2px; }
+
+#tk-status {
+  text-align: center;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--dim);
+  font-style: italic;
+  margin-top: 4px;
+}
+
+/* ---------- energy / end turn ---------- */
+
+#energy-wrap {
+  position: fixed;
+  left: 18px;
+  bottom: 20px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  z-index: 5;
+}
+#energy-label { font-size: 10px; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+#hud-energy { display: flex; gap: 6px; }
+.orb {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--violet-dim);
+  background: rgba(0, 0, 0, 0.5);
+}
+.orb.full {
+  background: radial-gradient(circle at 35% 30%, #d9c8ff, var(--violet) 60%, #4a2f8a);
+  box-shadow: 0 0 10px rgba(155, 108, 255, 0.9);
+}
+
+#btn-endturn {
+  position: fixed;
+  right: 18px;
+  bottom: 20px;
+  padding: 14px 26px;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: bold;
+  letter-spacing: 2px;
+  color: var(--parchment);
+  background: linear-gradient(180deg, #3a2a58, #241838);
+  border: 1px solid var(--violet);
+  border-radius: 10px;
+  cursor: pointer;
+  z-index: 5;
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+#btn-endturn:hover:not(:disabled) { box-shadow: 0 0 18px rgba(155, 108, 255, 0.7); transform: translateY(-1px); }
+#btn-endturn:disabled { opacity: 0.35; cursor: default; }
+
+/* ---------- messaging ---------- */
+
+#banner {
+  position: fixed;
+  top: 17%;
+  left: 50%;
+  transform: translateX(-50%) scale(0.9);
+  padding: 12px 34px;
+  font-size: 22px;
+  letter-spacing: 4px;
+  text-align: center;
+  color: #ff8a7a;
+  background: rgba(30, 8, 8, 0.85);
+  border: 1px solid rgba(255, 90, 74, 0.5);
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s, transform 0.3s;
+  z-index: 8;
+}
+#banner.show { opacity: 1; transform: translateX(-50%) scale(1); }
+#banner.boss {
+  color: #ffd970;
+  background: rgba(35, 24, 4, 0.9);
+  border-color: rgba(255, 217, 112, 0.6);
+  text-shadow: 0 0 14px rgba(255, 217, 112, 0.7);
+}
+
+#toast {
+  position: fixed;
+  bottom: 34%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px 18px;
+  font-size: 14px;
+  font-style: italic;
+  color: #ffb4a8;
+  background: rgba(20, 10, 14, 0.9);
+  border: 1px solid rgba(255, 120, 100, 0.35);
+  border-radius: 20px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s;
+  z-index: 8;
+}
+#toast.show { opacity: 1; }
+
+#hint {
+  position: fixed;
+  bottom: 27%;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-style: italic;
+  color: var(--dim);
+  text-shadow: 0 1px 4px #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s;
+  z-index: 4;
+}
+#hint.show { opacity: 0.9; }
+
+/* ---------- dialogue ---------- */
+
+#dialogue {
+  position: fixed;
+  top: 12%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-8px);
+  width: min(560px, 84vw);
+  background: rgba(10, 14, 16, 0.92);
+  border: 1px solid rgba(89, 240, 200, 0.4);
+  border-radius: 12px;
+  padding: 14px 20px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s, transform 0.35s;
+  z-index: 9;
+}
+#dialogue.show { opacity: 1; pointer-events: auto; transform: translateX(-50%) translateY(0); }
+#dialogue-name {
+  font-size: 12px;
+  letter-spacing: 5px;
+  color: var(--eldritch);
+  text-shadow: 0 0 12px rgba(89, 240, 200, 0.7);
+  margin-bottom: 6px;
+}
+#dialogue-text { font-size: 17px; font-style: italic; line-height: 1.45; color: #d8f0e8; }
+#dialogue-more { font-size: 10px; color: var(--dim); text-align: right; margin-top: 6px; letter-spacing: 1px; }
+
+/* ---------- overlay screens ---------- */
+
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(20, 10, 30, 0.72), rgba(5, 2, 8, 0.94));
+  z-index: 20;
+}
+#overlay.show { display: flex; }
+
+#overlay .panel {
+  max-width: 620px;
+  width: 90vw;
+  max-height: 88vh;
+  overflow-y: auto;
+  text-align: center;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 36px 40px;
+  box-shadow: 0 0 60px rgba(155, 108, 255, 0.25);
+}
+#overlay h1 {
+  font-size: 44px;
+  letter-spacing: 10px;
+  color: var(--violet);
+  text-shadow: 0 0 24px rgba(155, 108, 255, 0.8);
+  margin-bottom: 8px;
+}
+#overlay h2 { font-size: 16px; font-weight: normal; font-style: italic; color: var(--eldritch); margin-bottom: 18px; }
+#overlay p { font-size: 15px; line-height: 1.55; color: var(--dim); margin-bottom: 14px; }
+#overlay .rules { text-align: left; margin: 0 auto 18px; max-width: 480px; }
+#overlay .rules p { font-size: 13px; margin-bottom: 8px; color: #c3b8d8; }
+#overlay button {
+  padding: 14px 38px;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: bold;
+  letter-spacing: 3px;
+  color: #0d0814;
+  background: linear-gradient(180deg, #b08aff, var(--violet));
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.1s;
+}
+#overlay button:hover { box-shadow: 0 0 24px rgba(155, 108, 255, 0.9); transform: translateY(-2px); }
