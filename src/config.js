@@ -34,6 +34,9 @@ export const CAMERA_POSES = {
   bottom: { pos: [0, 15, 17.5], look: [0, -0.8, 5.2] },
   top: { pos: [0, 12.2, 13.2], look: [0, 4.8, -9.8] },
   kinaeto: { pos: [0, 10.4, -1.2], look: [0, 8.9, -13.6] },
+  // The hub cave sits closer to the ground: stations left and right, the
+  // broken obelisk and Kinaeto's faint portal at the back.
+  hub: { pos: [0, 10, 15.5], look: [0, 3.6, -8] },
   // Playable side angles (arrow keys / swipe): high over one flank, tilted
   // down at the board, the far wall's carvings riding the top of the frame.
   sideLeft: { pos: [-13.5, 15.5, 3.5], look: [4.5, -1.5, -2.2] },
@@ -66,6 +69,13 @@ export const RULES = {
   fastRows: [0, 1, 2, 3],
 };
 
+// Tile palettes per stage. The sanctum (tutorial ceremony grounds) is a more
+// established sanctuary: cut stone underfoot instead of raw cave rock.
+export const BOARD_THEMES = {
+  cave: { obelisk: 0x4c3668, player: 0x3d2f4e, enemy: 0x4a2f28 },
+  sanctum: { obelisk: 0x5c4386, player: 0x4a4158, enemy: 0x453838 },
+};
+
 export const COLORS = {
   fog: 0x0d0708,
   rock: 0x38292a,
@@ -89,6 +99,10 @@ export const COLORS = {
   enemy: 0xcfc4a8,
   enemyAccent: 0xd8a83c,
   boss: 0xf3e6c2,
+  gold: 0xd4a017,
+  stone: 0x453e50,
+  stoneDark: 0x322c3c,
+  lantern: 0xffc46b,
   warn: 0xff3b30,
   hpGood: 0x6be08a,
   hpBad: 0xe0574f,

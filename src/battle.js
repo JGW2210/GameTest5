@@ -47,15 +47,21 @@ function shuffle(arr) {
 }
 
 export class Battle {
-  constructor(def) {
+  // opts.deck — card key list for this run (defaults to STARTER_DECK)
+  // opts.cards — card definition table (defaults to CARDS; the hub's smith
+  //              upgrades pass in a modified table)
+  // opts.noShuffle — draw the deck in listed order (the guided tutorial)
+  constructor(def, opts = {}) {
     this.def = def;
+    this.cards = opts.cards || CARDS;
     this.turn = 1;
     this.impetus = RULES.impetusPerTurn;
     this.kinaeticUsed = 0;
     this.obeliskHp = def.obeliskHp;
     this.obeliskMaxHp = def.obeliskHp;
     this.units = new Map();
-    this.deck = shuffle(STARTER_DECK);
+    const list = opts.deck || STARTER_DECK;
+    this.deck = opts.noShuffle ? list.slice().reverse() : shuffle(list);
     this.hand = [];
     this.discard = [];
     this.wavesSpawned = 0;
@@ -182,7 +188,7 @@ export class Battle {
   // ---- card placement -----------------------------------------------------
 
   placementRows(cardKey) {
-    const def = CARDS[cardKey];
+    const def = this.cards[cardKey];
     return def.fast ? RULES.fastRows : RULES.baseRows;
   }
 
@@ -190,7 +196,7 @@ export class Battle {
     if (this.over) return { ok: false, reason: 'battle over' };
     const key = this.hand[handIndex];
     if (!key) return { ok: false, reason: 'no card' };
-    const def = CARDS[key];
+    const def = this.cards[key];
     if (def.type === 'tk') return { ok: false, reason: 'Rites are cast on units, not tiles' };
     if (def.cost > this.impetus) return { ok: false, reason: 'Not enough Impetus' };
     if (!this.placementRows(key).includes(row)) {
@@ -206,7 +212,7 @@ export class Battle {
     const check = this.canPlaceCard(handIndex, path, row);
     if (!check.ok) return { ok: false, reason: check.reason, events: [] };
     const key = this.hand.splice(handIndex, 1)[0];
-    const def = CARDS[key];
+    const def = this.cards[key];
     this.impetus -= def.cost;
     this.discard.push(key);
     const unit = {
@@ -237,6 +243,37 @@ export class Battle {
     this.arrivalCry(events, unit, def);
     this.checkEnd(events);
     return { ok: true, events };
+  }
+
+  // Scripted placement (the tutorial's sermon congregation): a follower simply
+  // exists on a tile — no cost, no arrival cry, no card leaves the hand.
+  placePreset(key, path, row) {
+    const def = this.cards[key];
+    const unit = {
+      uid: uidCounter++,
+      side: 'player',
+      key,
+      name: def.name,
+      type: def.type,
+      hp: def.hp,
+      maxHp: def.hp,
+      atk: def.atk,
+      range: def.range || 0,
+      fast: !!def.fast,
+      rage: !!def.rage,
+      armor: def.armor || 0,
+      sweep: !!def.sweep,
+      onDeath: def.onDeath || null,
+      ward: 0,
+      size: def.size || 1,
+      arrival: this.arrivalSeq++,
+      path,
+      row,
+      stunned: false,
+      actCount: 0,
+    };
+    this.units.set(unit.uid, unit);
+    return this.snapshot(unit);
   }
 
   arrivalCry(events, unit, def) {
@@ -347,7 +384,7 @@ export class Battle {
   canPlayTkCard(handIndex, targetUid) {
     if (this.over) return { ok: false, reason: 'battle over' };
     const key = this.hand[handIndex];
-    const def = key && CARDS[key];
+    const def = key && this.cards[key];
     if (!def || def.type !== 'tk') return { ok: false, reason: 'not a rite' };
     if (!this.kinaeticAvailable()) return { ok: false, reason: 'Kinaetic focus already spent this turn' };
     if (def.power !== 'beckon' && !this.units.get(targetUid)) {
@@ -360,7 +397,7 @@ export class Battle {
     const check = this.canPlayTkCard(handIndex, targetUid);
     if (!check.ok) return { ok: false, reason: check.reason, events: [] };
     const key = this.hand.splice(handIndex, 1)[0];
-    const def = CARDS[key];
+    const def = this.cards[key];
     this.discard.push(key);
     const events = [];
     const target = this.units.get(targetUid);
@@ -611,6 +648,18 @@ export class Battle {
     const wave = this.def.waves[this.wavesSpawned];
     if (!wave || wave.spawnAtEnd !== this.turn) return;
     this.wavesSpawned++;
+    this.spawnWave(wave, events);
+  }
+
+  // Scripted spawn outside the turn cycle (the sermon crash, the doom wave).
+  // Does not advance the wave counter — the caller owns the pacing.
+  spawnWaveNow(wave) {
+    const events = [];
+    this.spawnWave(wave, events);
+    return events;
+  }
+
+  spawnWave(wave, events) {
     for (const s of wave.spawns) {
       const def = ENEMIES[s.enemy];
       const size = def.size || 1;
@@ -660,6 +709,23 @@ export class Battle {
     return { type: 'warn', paths, isBoss: !!wave.isBoss };
   }
 
+  // The scripted doom (tutorial finale): the Inquisitor's Judgement stuns
+  // every faithful soul at once and shatters the obelisk. Unwinnable by design.
+  doom() {
+    const events = [];
+    for (const u of this.units.values()) {
+      if (u.side !== 'player') continue;
+      u.stunned = true;
+      events.push({ type: 'doomStun', uid: u.uid });
+    }
+    this.obeliskHp = 0;
+    events.push({ type: 'obeliskShatter' });
+    this.over = true;
+    this.result = 'lose';
+    events.push({ type: 'lose' });
+    return events;
+  }
+
   checkEnd(events) {
     if (this.over) return true;
     if (this.obeliskHp <= 0) {
@@ -668,7 +734,7 @@ export class Battle {
       events.push({ type: 'lose' });
       return true;
     }
-    if (this.wavesSpawned >= this.def.waves.length && this.aliveEnemies().length === 0) {
+    if (!this.def.noVictory && this.wavesSpawned >= this.def.waves.length && this.aliveEnemies().length === 0) {
       this.over = true;
       this.result = 'win';
       events.push({ type: 'win' });

@@ -151,9 +151,18 @@ export function clearCardTextures() {
   textureCache.clear();
 }
 
+// The card table faces are drawn from. The hub swaps in the smith-upgraded
+// table before a battle; textures are re-rendered from scratch.
+let ACTIVE_CARDS = CARDS;
+
+export function setCardSource(cards) {
+  ACTIVE_CARDS = cards || CARDS;
+  clearCardTextures();
+}
+
 export function cardTexture(key) {
   if (textureCache.has(key)) return textureCache.get(key);
-  const def = CARDS[key];
+  const def = ACTIVE_CARDS[key] || CARDS[key];
   const isTk = def.type === 'tk';
   const c = document.createElement('canvas');
   c.width = 256;
@@ -259,6 +268,14 @@ export function cardTexture(key) {
     ctx.shadowColor = '#6be08a';
     ctx.fillStyle = '#6be08a';
     ctx.fillText(`♥ ${def.hp}`, 230, 336);
+    // the smith's mark: a golden star per forging
+    if (def.forged) {
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#ffd970';
+      ctx.fillStyle = '#ffd970';
+      ctx.font = `bold 16px ${RUNIC}`;
+      ctx.fillText('★'.repeat(Math.min(def.forged, 3)), 128, 336);
+    }
     ctx.restore();
   }
 
@@ -321,7 +338,7 @@ export class CardHand {
 
   setAffordable(energy) {
     for (const m of this.meshes) {
-      const cost = CARDS[m.userData.key].cost;
+      const cost = (ACTIVE_CARDS[m.userData.key] || CARDS[m.userData.key]).cost;
       const ok = cost <= energy;
       m.material.color.setScalar(ok ? 1 : 0.45);
       m.userData.affordable = ok;

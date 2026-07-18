@@ -178,6 +178,66 @@ export const ENEMIES = {
     atk: 4,
     desc: 'ARMOR 1. Too heavy to Move or Push. Crush is halved. Every 2nd turn: Consecration — 2 damage to every cultist on his path.',
   },
+  inquisitor: {
+    key: 'inquisitor',
+    name: 'Grand Inquisitor Sarethiel',
+    kind: 'melee',
+    boss: true,
+    armor: 3,
+    size: 3,
+    hp: 60,
+    atk: 9,
+    desc: 'The church made flesh. His Judgement stuns every faithful soul at once and cracks stone itself.',
+  },
+};
+
+// The congregation standing before Kinaeto when the tutorial sermon begins.
+export const SERMON_FLOCK = [
+  { key: 'zealot', path: 0, row: 1 },
+  { key: 'warden', path: 1, row: 1 },
+  { key: 'zealot', path: 2, row: 1 },
+  { key: 'acolyte', path: 1, row: 2 },
+];
+
+// Fixed-order tutorial deck (drawn front-to-back, never shuffled) so every
+// guided step finds the card it teaches with. Opening hand of 5: zealot,
+// warden, fleet, crush, beckon.
+export const TUTORIAL_DECK = [
+  'zealot', 'warden', 'fleet', 'crush', 'beckon',
+  'eye', 'zealot', 'warden',
+  'trip', 'zealot', 'shrine',
+  'acolyte', 'crush', 'zealot', 'warden', 'beckon',
+];
+
+// The tutorial — "The First Night". Crusaders crash the sermon immediately
+// (the first wave is force-spawned by the tutorial script, never by timer),
+// a second wave arrives mid-lesson, and the Grand Inquisitor's arrival is
+// scripted: the battle cannot be won, only understood.
+export const TUTORIAL_BATTLE = {
+  name: 'The First Night',
+  obeliskHp: 20,
+  noVictory: true,
+  waves: [
+    {
+      warnAtEnd: -1, // force-spawned mid-sermon by the tutorial script
+      spawnAtEnd: -1,
+      spawns: [
+        { path: 0, enemy: 'footman' },
+        { path: 1, enemy: 'footman' },
+      ],
+    },
+    {
+      warnAtEnd: 3,
+      spawnAtEnd: 4,
+      spawns: [
+        { path: 1, enemy: 'hound' },
+        { path: 2, enemy: 'footman' },
+        { path: 0, enemy: 'crossbow' },
+      ],
+    },
+  ],
+  doomAfterTurn: 5, // at the end of this turn the Inquisitor ends the lesson
+  doomWave: { spawns: [{ path: 1, enemy: 'inquisitor' }] },
 };
 
 // Battle 1 — "The Lower Gate".
@@ -250,4 +310,49 @@ export const DIALOGUE = {
     'Do not weep. Threads can be rewoven. Begin again.',
   ],
   bossSpawn: 'There he is. Gold and certainty. Break both.',
+
+  // ---- the tutorial: sermon, lessons, and the scripted doom ----------------
+  sermon: [
+    'Closer, little flames. Let the stone hear you breathe.',
+    'I was old when these mountains were sand, and I have never once dropped what I carried.',
+    'The church names me monster. But watch their hands and watch mine — theirs make fists. Mine opens.',
+    'Remember, whatever comes: a palm held open, a fist held ready, a sign held high—',
+  ],
+  sermonCrash: [
+    'Boots. Torches. They interrupt a sermon.',
+    'Steady, shepherd. I will lend you my hand tonight — show me yours.',
+  ],
+  tutIntents: 'First: read them. The sigil above each helm confesses what it will do next — advance, strike, worse. Never be surprised.',
+  tutPlace: 'Now call a follower. Take the TORCHBEARER ZEALOT from your hand and set it on the tile I have marked. Every follower cries out the moment it lands.',
+  tutBurn: 'Impetus is faith on fire, and it never stretches far enough. Feed the flames the SHROUDED WARDEN from your hand — the card burns, the fire grows by one.',
+  tutEndTurn: 'Good. End the turn and watch the clash — your ranks always strike first. Use the button at the lower right.',
+  tutTk: 'Now for my favor. Seize a crusader with your mind — click it — and hurl it back the way it came. Once each turn, my reach is yours.',
+  tutEndTurn2: 'Ha! They do hate that. End the turn.',
+  tutRite: 'The rites in your hand are my knuckles. Drag the KINAETIC CRUSH onto a crusader and let it feel what patience weighs.',
+  tutEndTurn3: 'More of them on the roads. End the turn — hold your nerve.',
+  tutGaze: 'My Eye rests on one path each turn — the faithful there fight harder, and rites cast there cost you nothing. Set your EYE OF KINAETO upon the watched path.',
+  tutBeckon: 'One more gift. Release the BECKONING skyward, and I will press three cards into your hand.',
+  tutEndTurn4: 'You have every tool I can give. End the turn.',
+  tutFree: 'The rest is yours, shepherd. Place, burn, hurl, cast — hold the ceremony grounds.',
+  tutWave2Warn: 'More boots on the roads. You know what the sigils mean now — answer them.',
+  doomWarn: [
+    'Wait.',
+    'Something walks behind their lines. Shepherd... that is no soldier.',
+  ],
+  doomSpawn: 'Sarethiel. The church made flesh. RUN—',
+  doomSevered: [
+    'The obelisk—! My hand— I cannot hold the door—',
+  ],
+  dream: [
+    'Shepherd. Do not open your eyes. This is the only room they cannot burn.',
+    'The obelisk is gravel, and the door it held open is shut. I speak to you now through the crack beneath it.',
+    'Do not weep for the ceremony grounds. Stones are patient, and so am I.',
+    'Begin again. Gather the faithful, cut a new sanctuary, raise a new obelisk — and I will find your light.',
+    'And shepherd — when the Inquisitor comes again, and he will — we shall answer him together.',
+  ],
+  hubWelcome: [
+    'You look rested. Good. The crack beneath the door widens a little every day you keep faith.',
+    'The crusade musters at the lower gate. When you are ready, I will carry you there myself.',
+  ],
+  hubNotReady: 'Take your time. Sharpen the flock at the forge, choose who marches at the altar. I am patient.',
 };

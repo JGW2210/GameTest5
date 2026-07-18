@@ -1,17 +1,22 @@
-// Bootstraps the world and conducts play: input modes (card dragging,
-// telekinesis targeting), and sequential animation of battle engine events.
+// Bootstraps the world and conducts play across the game's states:
+//   menu → tutorial (the First Night, scripted loss) → hub ⇄ battle
+// Handles input modes (card dragging, telekinesis targeting), sequential
+// animation of battle engine events, and the hub's station interactions.
 
 import * as THREE from 'three';
 import { World } from './scene.js';
 import { Board } from './board.js';
 import { Kinaeto } from './kinaeto.js';
-import { CardHand, clearCardTextures } from './cards3d.js';
+import { CardHand, clearCardTextures, setCardSource } from './cards3d.js';
 import { Hud, PATH_NAMES } from './hud.js';
 import { Battle } from './battle.js';
 import { Tweens, Ease, sleep, floatText } from './effects.js';
 import { createUnitGroup, updateUnitGroup, drawHpBar, setIntent } from './units.js';
-import { BATTLE_ONE, DIALOGUE, CARDS } from './data.js';
-import { RULES, PATHS, ROWS, COLORS, OBELISK_POS, rowZ } from './config.js';
+import { BATTLE_ONE, TUTORIAL_BATTLE, TUTORIAL_DECK, DIALOGUE } from './data.js';
+import { RULES, PATHS, ROWS, COLORS, OBELISK_POS, BOARD_THEMES, rowZ } from './config.js';
+import { Tutorial } from './tutorial.js';
+import { Hub } from './hub.js';
+import { loadMeta, saveMeta, effectiveCards } from './meta.js';
 
 const canvas = document.getElementById('game');
 const world = new World(canvas);
@@ -20,14 +25,18 @@ const board = new Board(world.scene);
 const kinaeto = new Kinaeto(world.scene, tweens);
 const cardHand = new CardHand(world.camera);
 const hud = new Hud();
+const metaState = loadMeta();
 
 let battle = null;
+let tutorial = null;
+let state = 'menu'; // menu | tutorial | hub | battle
 let mode = 'menu'; // menu | idle | dragCard | tkSelect | busy
 let dragIndex = -1;
 let dragIsRite = false; // dragged card is a Kinaetic Rite (targets units)
 let tkUid = null; // unit grabbed for a telekinetic move
 let tkOptions = []; // {path,row,power} tiles Kinaeto can carry it to
 let warnCount = 0;
+let warnLines = []; // per-battle Kinaeto lines for wave warnings
 
 const unitViews = new Map(); // uid -> {group, hp, maxHp, path, row, boss}
 
@@ -71,17 +80,26 @@ function pickUnit() {
   return obj;
 }
 
+// The tutorial locks input to one taught action per step.
+function tutorialGate(action, payload) {
+  return tutorial && tutorial.active ? tutorial.gate(action, payload) : { ok: true };
+}
+
 function validPlacementCells(handIndex) {
+  const key = battle.hand[handIndex];
   const cells = [];
   for (let p = 0; p < PATHS; p++) {
     for (let r = 0; r < ROWS; r++) {
-      if (battle.canPlaceCard(handIndex, p, r).ok) cells.push({ path: p, row: r });
+      if (!battle.canPlaceCard(handIndex, p, r).ok) continue;
+      if (!tutorialGate('placeCard', { key, path: p, row: r }).ok) continue;
+      cells.push({ path: p, row: r });
     }
   }
   return cells;
 }
 
 function refreshHud() {
+  if (!battle) return;
   hud.setTurn(battle.turn);
   hud.setWave(`Wave ${battle.wavesSpawned} / ${battle.def.waves.length}`);
   hud.setImpetus(battle.impetus, RULES.impetusPerTurn);
@@ -105,6 +123,8 @@ function setMode(next) {
   };
   hud.setHint(hints[next] || '');
   hud.setEndTurnEnabled(next === 'idle');
+  // the tutorial re-asserts its own hint and target markers
+  if (next === 'idle' && tutorial && tutorial.active && !tutorial.cinematic) tutorial.applyUI();
 }
 
 function cancelAction() {
@@ -115,6 +135,11 @@ function cancelAction() {
   tkOptions = [];
   hud.setBurnHint(false);
   if (mode !== 'busy' && mode !== 'menu') setMode('idle');
+}
+
+function clearUnits() {
+  for (const v of unitViews.values()) world.scene.remove(v.group);
+  unitViews.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -213,18 +238,25 @@ async function animateMove(uid, to, tk = false) {
   const dest = viewTargetPos(v);
   v.moveGen++;
   if (tk) {
-    // Telekinetic arc: lifted by an unseen hand, wreathed in violet.
+    // Telekinetic arc: lifted by an unseen hand, wreathed in violet. The
+    // carried unit takes one full spin that lands exactly on its true combat
+    // facing — never a stray accumulated angle (units used to come out of a
+    // throw facing the wrong way).
     const glow = new THREE.PointLight(COLORS.kinaetic, 30, 6, 2);
     v.group.add(glow);
+    const startRot = v.group.rotation.y;
+    const baseFacing = v.group.userData.baseFacing || 0;
+    const endRot = baseFacing + Math.PI * 2;
     await tweens.run({
       duration: 0.75,
       ease: Ease.inOutCubic,
       onUpdate: (e) => {
         v.group.position.lerpVectors(from, dest, e);
         v.group.position.y += Math.sin(e * Math.PI) * 1.7;
-        v.group.rotation.y += 0.06;
+        v.group.rotation.y = startRot + (endRot - startRot) * e;
       },
     });
+    v.group.rotation.y = baseFacing;
     v.group.remove(glow);
   } else {
     await tweens.run({
@@ -315,11 +347,10 @@ async function animateDeath(uid) {
 // ---------------------------------------------------------------------------
 // battle event animation
 
-const WARN_LINES = [DIALOGUE.wave1Warn, DIALOGUE.wave2Warn, DIALOGUE.wave3Warn, DIALOGUE.bossWarn];
-
 // Camera pans up to frame the portal while Kinaeto speaks; the hand of cards
 // tucks away and the dialogue box docks beneath him.
 async function kinaetoSpeaks(lines) {
+  const cardsWereVisible = cardHand.group.visible;
   cardHand.group.visible = false;
   world.focusTarget = 1;
   hud.setDialogueDock(true);
@@ -328,7 +359,7 @@ async function kinaetoSpeaks(lines) {
   await kinaeto.retreat();
   hud.setDialogueDock(false);
   world.focusTarget = 0;
-  cardHand.group.visible = true;
+  cardHand.group.visible = cardsWereVisible;
 }
 
 // Animate a single battle event. Batched clash events run through here
@@ -422,9 +453,9 @@ async function animateEvent(ev) {
           ev.isBoss ? `⚜ THE SAINT-COMMANDER COMES — ${names} PATH ⚜` : `THE CRUSADE STIRS — ${names} PATH${ev.paths.length > 1 ? 'S' : ''}`,
           ev.isBoss ? 'boss' : 'warn'
         );
-        const line = WARN_LINES[Math.min(warnCount, WARN_LINES.length - 1)];
+        const line = warnLines[Math.min(warnCount, warnLines.length - 1)];
         warnCount++;
-        await kinaetoSpeaks([line]);
+        if (line) await kinaetoSpeaks([line]);
         break;
       }
       case 'spawn': {
@@ -434,7 +465,7 @@ async function animateEvent(ev) {
         const dest = viewTargetPos(unitViews.get(unit.uid));
         const from = group.position.clone();
         if (ev.isBoss) {
-          hud.banner('⚜ SAINT-COMMANDER AUREL ⚜', 'boss');
+          hud.banner(`⚜ ${unit.name.toUpperCase()} ⚜`, 'boss');
           world.addShake(0.4);
         }
         await tweens.run({
@@ -445,7 +476,7 @@ async function animateEvent(ev) {
             group.position.y = dest.y + Math.abs(Math.sin(e * Math.PI * 2)) * 0.15;
           },
         });
-        if (ev.isBoss) await kinaetoSpeaks([DIALOGUE.bossSpawn]);
+        if (ev.isBoss && state === 'battle') await kinaetoSpeaks([DIALOGUE.bossSpawn]);
         hud.setWave(`Wave ${battle.wavesSpawned} / ${battle.def.waves.length}`);
         settleUnits();
         break;
@@ -547,6 +578,28 @@ async function animateEvent(ev) {
         }
         break;
       }
+      case 'doomStun': {
+        // The Inquisitor's Judgement: the faithful drop where they stand.
+        const v = unitViews.get(ev.uid);
+        if (v) {
+          floatText(world.scene, tweens, v.group.position.clone().add(new THREE.Vector3(0, 1.8, 0)), '✦ STILLED ✦', '#ffd970');
+          await tweens.run({
+            duration: 0.5,
+            ease: Ease.outCubic,
+            onUpdate: (e) => {
+              v.group.rotation.x = e * 1.25;
+            },
+          });
+        }
+        break;
+      }
+      case 'obeliskShatter': {
+        hud.setObelisk(0, battle.obeliskMaxHp);
+        world.addShake(0.6);
+        await world.shatterObelisk(tweens);
+        await sleep(400);
+        break;
+      }
     }
   }
 }
@@ -558,14 +611,18 @@ async function processEvents(events) {
     if (ev.type === 'win') {
       await sleep(400);
       await kinaetoSpeaks(DIALOGUE.victory);
-      hud.showScreen('victory', () => location.reload());
+      metaState.battlesWon = Math.max(metaState.battlesWon || 0, 1);
+      saveMeta(metaState);
+      hud.showScreen('victory', () => enterHub());
       return;
     }
     if (ev.type === 'lose') {
+      // In the tutorial, the loss belongs to the script — the dream follows.
+      if (state === 'tutorial') return;
       world.addShake(0.6);
       await sleep(500);
       await kinaetoSpeaks(DIALOGUE.defeat);
-      hud.showScreen('defeat', () => location.reload());
+      hud.showScreen('defeat', () => enterHub());
       return;
     }
     if (ev.batch) {
@@ -592,14 +649,19 @@ async function processEvents(events) {
   }
   refreshHud();
   setMode('idle');
+  if (tutorial && tutorial.active) await tutorial.afterEvents();
 }
 
 // ---------------------------------------------------------------------------
 // input
 
 window.addEventListener('pointermove', (e) => {
-  if (!battle || battle.over) return;
   setPointer(e);
+  if (state === 'hub') {
+    hub.onPointerMove(raycaster);
+    return;
+  }
+  if (!battle || battle.over) return;
   cardHand.setPointerNDC(pointer.x, pointer.y);
   // Vertical glance: cursor near the hand peeks at the path mouths and their
   // warning sigils; cursor near the top frames the full obelisk.
@@ -664,8 +726,13 @@ window.addEventListener('pointermove', (e) => {
 });
 
 window.addEventListener('pointerdown', (e) => {
-  if (!battle || battle.over || e.button === 2) return;
+  if (e.button === 2) return;
   setPointer(e);
+  if (state === 'hub') {
+    hub.onPointerDown(raycaster);
+    return;
+  }
+  if (!battle || battle.over) return;
 
   if (mode === 'idle') {
     const slot = cardHand.slotIndexAt();
@@ -675,7 +742,12 @@ window.addEventListener('pointerdown', (e) => {
       if (picked && picked.userData.index === cardHand.hoverIndex) card = picked;
     }
     if (card) {
-      const def = CARDS[card.userData.key];
+      const gateCheck = tutorialGate('dragCard', { key: card.userData.key });
+      if (!gateCheck.ok) {
+        hud.toast(gateCheck.reason);
+        return;
+      }
+      const def = battle.cards[card.userData.key];
       if (def.type === 'tk') {
         if (!battle.kinaeticAvailable()) {
           hud.toast('Kinaetic focus already spent this turn');
@@ -706,6 +778,11 @@ window.addEventListener('pointerdown', (e) => {
     const unitObj = pickUnit();
     if (unitObj) {
       const uid = unitObj.userData.uid;
+      const gateCheck = tutorialGate('tk', { uid, side: battle.units.get(uid)?.side });
+      if (!gateCheck.ok) {
+        hud.toast(gateCheck.reason);
+        return;
+      }
       const check = battle.canTkGrab(uid);
       if (!check.ok) {
         hud.toast(check.reason);
@@ -732,6 +809,7 @@ window.addEventListener('pointerdown', (e) => {
       tkUid = null;
       tkOptions = [];
       if (result.ok) {
+        tutorial?.noteAction('tkMove');
         processEvents(result.events);
       } else {
         hud.toast(result.reason);
@@ -751,12 +829,20 @@ window.addEventListener('pointerup', (e) => {
 
   // Any card released over the Impetus flames burns for +1.
   if (pointer.x < -0.5 && pointer.y < -0.55) {
+    const key = cardHand.meshes[dragIndex]?.userData.key;
+    const gateCheck = tutorialGate('burn', { key });
+    if (!gateCheck.ok) {
+      hud.toast(gateCheck.reason);
+      cancelAction();
+      return;
+    }
     const result = battle.burnCard(dragIndex);
     if (result.ok) {
       cardHand.removeCardVisual(dragIndex);
       dragIndex = -1;
       dragIsRite = false;
       setMode('busy');
+      tutorial?.noteAction('burn');
       processEvents(result.events);
       return;
     }
@@ -766,16 +852,24 @@ window.addEventListener('pointerup', (e) => {
   }
 
   if (dragIsRite) {
-    const def = CARDS[cardHand.meshes[dragIndex]?.userData.key];
+    const key = cardHand.meshes[dragIndex]?.userData.key;
+    const def = key && battle.cards[key];
     if (def && def.power === 'beckon') {
       // released anywhere above the hand
       if (pointer.y > -0.45) {
+        const gateCheck = tutorialGate('rite', { key });
+        if (!gateCheck.ok) {
+          hud.toast(gateCheck.reason);
+          cancelAction();
+          return;
+        }
         const result = battle.playTkCard(dragIndex);
         if (result.ok) {
           cardHand.removeCardVisual(dragIndex);
           dragIndex = -1;
           dragIsRite = false;
           setMode('busy');
+          tutorial?.noteAction('rite');
           processEvents(result.events);
           return;
         }
@@ -784,12 +878,20 @@ window.addEventListener('pointerup', (e) => {
     } else {
       const unitObj = pickUnit();
       if (unitObj) {
+        const targetSide = battle.units.get(unitObj.userData.uid)?.side;
+        const gateCheck = tutorialGate('rite', { key, targetSide });
+        if (!gateCheck.ok) {
+          hud.toast(gateCheck.reason);
+          cancelAction();
+          return;
+        }
         const result = battle.playTkCard(dragIndex, unitObj.userData.uid);
         if (result.ok) {
           cardHand.removeCardVisual(dragIndex);
           dragIndex = -1;
           dragIsRite = false;
           setMode('busy');
+          tutorial?.noteAction('rite');
           processEvents(result.events);
           return;
         }
@@ -803,12 +905,20 @@ window.addEventListener('pointerup', (e) => {
   const tile = pickTile();
   if (tile) {
     const { path, row } = tile.userData;
+    const key = cardHand.meshes[dragIndex]?.userData.key;
+    const gateCheck = tutorialGate('placeCard', { key, path, row });
+    if (!gateCheck.ok) {
+      hud.toast(gateCheck.reason);
+      cancelAction();
+      return;
+    }
     const check = battle.canPlaceCard(dragIndex, path, row);
     if (check.ok) {
       const result = battle.playCard(dragIndex, path, row);
       cardHand.removeCardVisual(dragIndex);
       dragIndex = -1;
       setMode('busy');
+      tutorial?.noteAction('placeCard');
       processEvents(result.events);
       return;
     }
@@ -833,19 +943,22 @@ function toggleSideView(dir) {
 
 window.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
+    if (state === 'hub') {
+      hub.closePanel();
+      return;
+    }
     world.sideTarget = 0;
     cancelAction();
-  } else if (e.key === 'ArrowLeft') {
-    toggleSideView(-1);
-  } else if (e.key === 'ArrowRight') {
-    toggleSideView(1);
+  } else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (state === 'hub') return;
+    toggleSideView(e.key === 'ArrowLeft' ? -1 : 1);
   }
 });
 
 // Touch: a horizontal swipe across the centre of the view toggles side views.
 let swipeStart = null;
 window.addEventListener('pointerdown', (e) => {
-  if (e.pointerType !== 'touch' || mode !== 'idle') return;
+  if (e.pointerType !== 'touch' || mode !== 'idle' || state === 'hub') return;
   const nx = e.clientX / window.innerWidth;
   const ny = e.clientY / window.innerHeight;
   if (nx > 0.15 && nx < 0.85 && ny > 0.1 && ny < 0.72) {
@@ -865,56 +978,168 @@ window.addEventListener('pointerup', (e) => {
 
 hud.onEndTurn = () => {
   if (mode !== 'idle') return;
+  const gateCheck = tutorialGate('endTurn', {});
+  if (!gateCheck.ok) {
+    hud.toast(gateCheck.reason);
+    return;
+  }
   cancelAction();
+  tutorial?.noteAction('endTurn');
   const events = battle.endTurn();
   processEvents(events);
 };
 
 // ---------------------------------------------------------------------------
-// boot
+// game flow
 
-async function startBattle() {
-  hud.showScreen(null);
-  // Card faces and wall carvings are canvas-drawn: make sure the runic font
-  // is in before anything renders text.
+// Card faces and wall carvings are canvas-drawn: make sure the runic font is
+// in before anything renders text. Safe to call after every stage switch —
+// it also re-strikes the wall carvings of the freshly built stage.
+async function ensureFontAndCarvings() {
   try {
     await document.fonts.load('20px "Uncial Antiqua"');
     clearCardTextures();
     world.refreshWallCarvings();
-  } catch (e) {
+  } catch (err) {
     // font failure falls back to serif — carry on
   }
-  battle = new Battle(BATTLE_ONE);
+}
+
+// The First Night: sermon → crash → guided lessons → the Inquisitor → dream.
+async function startTutorial() {
+  hud.showScreen(null);
+  state = 'tutorial';
+  world.setStage('sanctum');
+  board.setVisible(true);
+  board.setTheme(BOARD_THEMES.sanctum);
+  hud.setBattleUi(true);
+  cardHand.group.visible = true;
+  clearUnits();
+  board.clearWarnings();
+  setCardSource(null); // the tutorial teaches with the unforged cards
+  await ensureFontAndCarvings();
+
+  battle = new Battle(TUTORIAL_BATTLE, { deck: TUTORIAL_DECK, noShuffle: true });
+  warnLines = [DIALOGUE.tutWave2Warn];
+  warnCount = 0;
+  refreshHud();
+  setMode('busy');
+
+  tutorial = new Tutorial({
+    battle,
+    board,
+    hud,
+    world,
+    kinaeto,
+    cardHand,
+    tweens,
+    unitViews,
+    setIntent,
+    kinaetoSpeaks,
+    processEvents,
+    addUnitView,
+    settleUnits,
+    setMode,
+    onComplete: () => {
+      tutorial = null;
+      metaState.tutorialDone = true;
+      saveMeta(metaState);
+      enterHub();
+    },
+  });
+  await tutorial.begin();
+}
+
+const hub = new Hub({
+  world,
+  board,
+  hud,
+  cardHand,
+  meta: metaState,
+  kinaetoSpeaks,
+  onStartBattle: () => startBattleOne(),
+});
+
+function enterHub() {
+  hud.showScreen(null);
+  state = 'hub';
+  battle = null;
+  tutorial = null;
+  clearUnits();
+  setMode('menu');
+  hub.enter();
+}
+
+// Battle one — the Lower Gate, fought with the deck and forgings from the hub.
+async function startBattleOne() {
+  hub.exit();
+  hud.showScreen(null);
+  state = 'battle';
+  world.setStage('cave');
+  board.setVisible(true);
+  board.setTheme(BOARD_THEMES.cave);
+  hud.setBattleUi(true);
+  cardHand.group.visible = true;
+  clearUnits();
+  board.clearWarnings();
+  const cards = effectiveCards(metaState);
+  setCardSource(cards);
+  await ensureFontAndCarvings();
+
+  battle = new Battle(BATTLE_ONE, { deck: metaState.deck.slice(), cards });
+  warnLines = [DIALOGUE.wave1Warn, DIALOGUE.wave2Warn, DIALOGUE.wave3Warn, DIALOGUE.bossWarn];
   warnCount = 0;
   refreshHud();
   setMode('busy');
   await kinaetoSpeaks(DIALOGUE.intro);
-  const events = battle.start();
-  await processEvents(events);
+  await processEvents(battle.start());
 }
 
-hud.showScreen('menu', () => startBattle());
+// ---------------------------------------------------------------------------
+// boot
 
-// Debug / test hook: inspect live state from the console.
+// Something atmospheric behind the menu overlay.
+world.setStage(metaState.tutorialDone ? 'hub' : 'sanctum');
+board.setVisible(!metaState.tutorialDone);
+board.setTheme(BOARD_THEMES.sanctum);
+
+hud.showScreen(
+  'menu',
+  (key) => {
+    if (key === 'tutorial') startTutorial();
+    else enterHub();
+  },
+  { firstRun: !metaState.tutorialDone }
+);
+
+// Debug / test hook: inspect live state from the console. timeScale
+// multiplies animation time (Playwright runs use it to offset slow
+// software rendering).
 window.__game = {
+  timeScale: 1,
   get battle() { return battle; },
   get mode() { return mode; },
+  get state() { return state; },
+  get tutorial() { return tutorial; },
+  hub,
+  meta: metaState,
   unitViews,
   world,
   board,
   cardHand,
-  _test: { addUnitView, settleUnits, viewTargetPos, isContested },
+  _test: { addUnitView, settleUnits, viewTargetPos, isContested, startTutorial, enterHub, startBattleOne },
 };
 
 const clock = new THREE.Clock();
 function animate() {
   requestAnimationFrame(animate);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  const dt = Math.min(clock.getDelta(), 0.05) * (window.__game.timeScale || 1);
   world.update(dt);
   board.update(dt);
   kinaeto.update(dt);
   cardHand.update(dt);
   tweens.update(dt);
+  if (tutorial) tutorial.update(dt);
   for (const v of unitViews.values()) updateUnitGroup(v.group, dt);
   world.render();
 }
