@@ -26,8 +26,16 @@ half**, the bottom 3 are the **enemy half**. Enemies emerge at the path mouths a
 tile by tile toward the obelisk; if they reach it, they batter it down. Lose the obelisk
 and the battle is lost. Defeat every wave and it is won.
 
-You start with **5 cards** and draw **5 more each turn** (hand cap of 10 — undrawn cards
-wait in the deck), spending **Kinaetic energy** to place followers:
+You start with **5 cards** and draw **3 more each turn** (hand cap of 10 — undrawn cards
+wait in the deck); *Kinaeto's Beckoning* rite cards draw extra. Two resources drive a turn:
+
+- **Impetus** 🔥 — flame energy that pays for followers. A fixed measure every turn; it
+  never grows.
+- **Kinaetic focus** — Kinaeto reaches through you **once per turn**: either click a unit
+  and choose a tile to Move/Push it, or cast a **Kinaetic Rite** card — *Crush* (3 damage),
+  *Trip* (stun), or *Beckoning* (draw 3). Rites cost no Impetus.
+
+Follower types:
 
 | Type | Behaviour |
 | --- | --- |
@@ -41,13 +49,10 @@ Base units may be placed on the first two tiles of your half (or in the obelisk 
 
 ### Telekinesis
 
-Once per turn, Kinaeto reaches through you — pick one power from the right-hand panel,
-then a target (yours *or* theirs):
-
-- **Move** — lift any unit one tile in any direction
-- **Push** — hurl a unit two tiles along its path (including your own units into the enemy half)
-- **Crush** — clench: 3 damage
-- **Trip** — sweep the legs: the unit skips its next action
+Click any unit (yours *or* theirs — Hand Signs and the boss refuse) and Kinaeto shows
+where he can carry it: adjacent tiles glow for a **Move**, two-tile throws along the path
+glow for a **Push** (including hurling your own units into the enemy half). Crush and
+Trip live in your deck as rite cards dragged onto a target unit.
 
 ### Waves
 
@@ -62,7 +67,8 @@ his whole path every second turn.
 
 - **Drag a card** from the fan onto a glowing tile to place a follower — cards tilt and
   spring toward the cursor, and the dragged card follows it
-- **Telekinesis panel** (right): pick a power, click a target unit, then a destination tile
+- **Click a unit** to grab it with Kinaeto's hand, then click a glowing tile (teal = Move,
+  violet = Push); drag rite cards onto units (or just upward, for Beckoning)
 - **Right-click / Esc** cancels; **End Turn** resolves the round
 - **Camera glance**: move the cursor to the bottom of the screen to peek at the path
   mouths (and incoming-wave sigils) above your hand; move it to the top to frame the

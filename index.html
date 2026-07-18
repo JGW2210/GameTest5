@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>KINAETO — Beneath the Flame</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🜏</text></svg>" />
+  <link rel="preload" href="vendor/fonts/uncial-antiqua-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="stylesheet" href="style.css" />
   <script type="importmap">
     {
@@ -17,7 +18,7 @@
 <body>
   <canvas id="game"></canvas>
 
-  <!-- top bar -->
+  <!-- top bar: floating glowing text, no boxes -->
   <div id="topbar">
     <div class="top-group">
       <div id="hud-turn">Turn 1</div>
@@ -33,20 +34,18 @@
     </div>
   </div>
 
-  <!-- telekinesis panel -->
-  <div id="tk-panel">
-    <div id="tk-title">TELEKINESIS</div>
-    <button class="tk-btn" data-power="move"><span class="tk-name">Move</span><span class="tk-desc">Lift any unit one tile</span></button>
-    <button class="tk-btn" data-power="push"><span class="tk-name">Push</span><span class="tk-desc">Hurl a unit 2 tiles along its path</span></button>
-    <button class="tk-btn" data-power="crush"><span class="tk-name">Crush</span><span class="tk-desc">Clench: 3 damage</span></button>
-    <button class="tk-btn" data-power="trip"><span class="tk-name">Trip</span><span class="tk-desc">Sweep the legs: stun a turn</span></button>
-    <div id="tk-status">KINAETO REACHES THROUGH YOU</div>
-  </div>
-
-  <!-- energy + end turn -->
-  <div id="energy-wrap">
-    <div id="energy-label">KINAETIC ENERGY</div>
-    <div id="hud-energy"></div>
+  <!-- resources: Impetus flames + the single Kinaetic focus -->
+  <div id="resources">
+    <div id="impetus-label">IMPETUS</div>
+    <div id="hud-impetus"></div>
+    <div id="kinaetic-wrap" title="Kinaetic focus — one reach of the hand per turn">
+      <svg id="hud-kinaetic" viewBox="0 0 64 40" width="58" height="36">
+        <path d="M4 20 Q32 -6 60 20 Q32 46 4 20 Z" fill="none" stroke="currentColor" stroke-width="3"/>
+        <circle cx="32" cy="20" r="9" fill="currentColor"/>
+        <circle cx="32" cy="20" r="3.5" fill="#050208"/>
+      </svg>
+      <div id="kinaetic-label">KINAETIC</div>
+    </div>
   </div>
   <button id="btn-endturn">END TURN</button>
 

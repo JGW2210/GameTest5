@@ -10,13 +10,13 @@ export class Hud {
     this.el = {
       turn: $('hud-turn'),
       wave: $('hud-wave'),
-      energy: $('hud-energy'),
+      impetus: $('hud-impetus'),
+      kinaetic: $('hud-kinaetic'),
+      kinaeticWrap: $('kinaetic-wrap'),
       obeliskFill: $('hud-obelisk-fill'),
       obeliskText: $('hud-obelisk-text'),
       deck: $('hud-deck'),
       discardPile: $('hud-discard'),
-      tkPanel: $('tk-panel'),
-      tkStatus: $('tk-status'),
       endTurn: $('btn-endturn'),
       banner: $('banner'),
       toast: $('toast'),
@@ -25,19 +25,11 @@ export class Hud {
       overlay: $('overlay'),
       hint: $('hint'),
     };
-    this.tkButtons = [...document.querySelectorAll('.tk-btn')];
-    this.onTkSelect = null;
     this.onEndTurn = null;
     this._dialogueResolve = null;
     this._toastTimer = null;
     this._bannerTimer = null;
 
-    for (const b of this.tkButtons) {
-      b.addEventListener('click', () => {
-        if (b.disabled) return;
-        if (this.onTkSelect) this.onTkSelect(b.dataset.power);
-      });
-    }
     this.el.endTurn.addEventListener('click', () => {
       if (!this.el.endTurn.disabled && this.onEndTurn) this.onEndTurn();
     });
@@ -58,13 +50,21 @@ export class Hud {
     this.el.wave.textContent = text;
   }
 
-  setEnergy(cur, max) {
-    this.el.energy.innerHTML = '';
+  // Impetus: a row of flames, burning while unspent.
+  setImpetus(cur, max) {
+    this.el.impetus.innerHTML = '';
     for (let i = 0; i < max; i++) {
-      const orb = document.createElement('div');
-      orb.className = 'orb' + (i < cur ? ' full' : '');
-      this.el.energy.appendChild(orb);
+      const f = document.createElement('span');
+      f.className = 'flame' + (i < cur ? ' lit' : '');
+      f.innerHTML =
+        '<svg viewBox="0 0 24 32" width="22" height="30"><path d="M12 2 C15 8 20 11 20 19 A8 8 0 0 1 4 19 C4 13 8 10 9 6 C10 9 12 10 13 12 C14 8 12 5 12 2 Z"/></svg>';
+      this.el.impetus.appendChild(f);
     }
+  }
+
+  // Kinaetic focus: the eye is open while the turn's single use remains.
+  setKinaetic(available) {
+    this.el.kinaeticWrap.classList.toggle('spent', !available);
   }
 
   setObelisk(hp, max) {
@@ -77,14 +77,6 @@ export class Hud {
   setCounts(deck, discard) {
     this.el.deck.textContent = `Deck ${deck}`;
     this.el.discardPile.textContent = `Discard ${discard}`;
-  }
-
-  setTk(used, max, selected) {
-    this.el.tkStatus.textContent = used < max ? 'KINAETO REACHES THROUGH YOU' : 'The hand rests until next turn';
-    for (const b of this.tkButtons) {
-      b.disabled = used >= max;
-      b.classList.toggle('selected', b.dataset.power === selected);
-    }
   }
 
   setEndTurnEnabled(enabled) {
@@ -158,11 +150,11 @@ export class Hud {
         body: 'The church marches on your cave. Three paths lead to the obelisk that ties Kinaeto — hand, eye, and patience — to this plane. Draw your followers. Hold the gate.',
         btn: 'Begin the Vigil',
         extra: `<div class="rules">
-          <p><b>✋ Open Palm</b> — holds its tile; only your telekinesis moves it.</p>
-          <p><b>✊ Closed Fist</b> — advances; attacks foes on its tile.</p>
-          <p><b>🖐 Hand Sign</b> — casts 2–5 tiles down its path; can never be moved.</p>
-          <p><b>Telekinesis</b> — once per turn: Move, Push, Crush, or Trip any lawful target — even the enemy's.</p>
-          <p><b>← →</b> (or swipe) — look to the cave walls. The faithful have left you messages.</p>
+          <p><b>Impetus</b> 🔥 — flame energy that calls troops. A fixed measure each turn.</p>
+          <p><b>Kinaetic focus</b> — Kinaeto reaches through you once per turn: click a unit to Move or Push it, or cast a Rite card (Crush, Trip, Beckoning).</p>
+          <p><b>✋ Open Palm</b> — holds its tile. <b>✊ Closed Fist</b> — advances; attacks foes on its tile. <b>🖐 Hand Sign</b> — casts down its path; can never be moved.</p>
+          <p><b>Cards</b> — 5 to open, 3 each turn. Kinaeto's Beckoning draws more.</p>
+          <p><b>← →</b> (or swipe) — take the flanks. The faithful have left you messages on the walls.</p>
           <p>Survive 4 waves. The 4th brings their Saint-Commander up the centre path.</p>
         </div>`,
       },

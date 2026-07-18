@@ -9,13 +9,16 @@ const TYPE_COLORS = {
   palm: '#3fb8a0',
   sign: '#8f65ff',
   object: '#8d8478',
+  tk: '#59f0c8',
 };
 const TYPE_LABELS = {
   fist: 'CLOSED FIST',
   palm: 'OPEN PALM',
   sign: 'HAND SIGN',
   object: 'RELIC',
+  tk: 'KINAETIC RITE',
 };
+const RUNIC = '"Uncial Antiqua", Georgia, serif';
 
 function roundRect(ctx, x, y, w, h, r) {
   ctx.beginPath();
@@ -74,6 +77,42 @@ export function drawGlyph(ctx, type, cx, cy, s, color) {
     ctx.beginPath();
     ctx.arc(0, -0.55, 0.14, 0, Math.PI * 2);
     ctx.fill();
+  } else if (type === 'crush') {
+    // clenched fist with converging force lines
+    roundRect(ctx, -0.45, -0.32, 0.9, 0.8, 0.2);
+    ctx.fill();
+    ctx.lineWidth = 0.12;
+    for (const a of [-2.6, -2.0, -1.1, -0.5, 0.6, 1.2, 2.1, 2.7]) {
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * 1.05, Math.sin(a) * 1.05);
+      ctx.lineTo(Math.cos(a) * 0.7, Math.sin(a) * 0.7);
+      ctx.stroke();
+    }
+  } else if (type === 'trip') {
+    // a toppling figure over a sweeping arc
+    ctx.save();
+    ctx.rotate(0.6);
+    ctx.beginPath();
+    ctx.arc(0, -0.35, 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    roundRect(ctx, -0.13, -0.1, 0.26, 0.7, 0.1);
+    ctx.fill();
+    ctx.restore();
+    ctx.lineWidth = 0.16;
+    ctx.beginPath();
+    ctx.arc(0, 0.45, 0.75, Math.PI * 0.15, Math.PI * 0.85);
+    ctx.stroke();
+  } else if (type === 'beckon') {
+    // the eye, open
+    ctx.lineWidth = 0.14;
+    ctx.beginPath();
+    ctx.moveTo(-0.95, 0);
+    ctx.quadraticCurveTo(0, -0.85, 0.95, 0);
+    ctx.quadraticCurveTo(0, 0.85, -0.95, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.34, 0, Math.PI * 2);
+    ctx.fill();
   } else {
     // relic / object — a faceted stone
     ctx.beginPath();
@@ -107,86 +146,121 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
 
 const textureCache = new Map();
 
+export function clearCardTextures() {
+  for (const tex of textureCache.values()) tex.dispose();
+  textureCache.clear();
+}
+
 export function cardTexture(key) {
   if (textureCache.has(key)) return textureCache.get(key);
   const def = CARDS[key];
+  const isTk = def.type === 'tk';
   const c = document.createElement('canvas');
   c.width = 256;
   c.height = 360;
   const ctx = c.getContext('2d');
   const accent = TYPE_COLORS[def.type];
 
-  // background
-  const grad = ctx.createLinearGradient(0, 0, 0, 360);
-  grad.addColorStop(0, '#1c1426');
-  grad.addColorStop(1, '#0d0814');
+  // deep shadow slab, soft-edged — no hard border
+  const grad = ctx.createRadialGradient(128, 150, 40, 128, 190, 280);
+  grad.addColorStop(0, isTk ? '#0e2420' : '#191126');
+  grad.addColorStop(0.75, '#0b0712');
+  grad.addColorStop(1, 'rgba(8,5,12,0.0)');
+  roundRect(ctx, 4, 4, 248, 352, 22);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 256, 360);
-  // border
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 7;
-  roundRect(ctx, 5, 5, 246, 350, 14);
-  ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-  ctx.lineWidth = 2;
-  roundRect(ctx, 14, 14, 228, 332, 10);
-  ctx.stroke();
-
-  // cost orb
-  ctx.beginPath();
-  ctx.arc(34, 36, 22, 0, Math.PI * 2);
-  ctx.fillStyle = '#9b6cff';
   ctx.fill();
-  ctx.strokeStyle = '#d9c8ff';
-  ctx.lineWidth = 3;
+
+  // faint aetherial edge glow
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 16;
+  ctx.strokeStyle = `${accent}55`;
+  ctx.lineWidth = 2;
+  roundRect(ctx, 8, 8, 240, 344, 20);
   ctx.stroke();
-  ctx.fillStyle = '#fff';
-  ctx.font = 'bold 26px Georgia, serif';
+  ctx.restore();
+
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(String(def.cost), 34, 38);
 
-  // name
-  ctx.fillStyle = '#efe6d2';
-  ctx.font = 'bold 17px Georgia, serif';
-  wrapText(ctx, def.name, 150, 30, 184, 19);
+  // cost: flames for troops, the eye for rites
+  ctx.save();
+  ctx.shadowBlur = 12;
+  if (isTk) {
+    ctx.shadowColor = '#59f0c8';
+    drawGlyph(ctx, 'beckon', 34, 34, 15, '#59f0c8');
+  } else {
+    ctx.shadowColor = '#ff8a3c';
+    ctx.fillStyle = '#ffb46b';
+    ctx.font = `bold 30px ${RUNIC}`;
+    ctx.fillText(String(def.cost), 34, 36);
+    ctx.beginPath(); // small flame tick under the number
+    ctx.moveTo(34, 62);
+    ctx.quadraticCurveTo(41, 52, 34, 44);
+    ctx.quadraticCurveTo(27, 52, 34, 62);
+    ctx.fillStyle = '#ff8a3c';
+    ctx.fill();
+  }
+  ctx.restore();
 
-  // type banner
+  // name in runic script, glowing
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#f2ead6';
+  ctx.font = `19px ${RUNIC}`;
+  wrapText(ctx, def.name, 148, 30, 178, 22);
+  ctx.restore();
+
+  // type line — plain glowing text, no banner
   ctx.fillStyle = accent;
-  ctx.fillRect(24, 62, 208, 22);
-  ctx.fillStyle = '#0d0814';
-  ctx.font = 'bold 14px Georgia, serif';
+  ctx.font = `13px ${RUNIC}`;
   let tag = TYPE_LABELS[def.type];
   if (def.fast) tag += ' • FAST';
   if (def.range) tag += ` • RNG ${def.range}`;
-  ctx.fillText(tag, 128, 74);
-
-  // glyph
   ctx.save();
-  ctx.globalAlpha = 0.16;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 8;
+  ctx.fillText(tag, 128, 78);
+  ctx.restore();
+
+  // glyph with halo
+  ctx.save();
+  ctx.globalAlpha = 0.13;
   ctx.beginPath();
-  ctx.arc(128, 158, 62, 0, Math.PI * 2);
+  ctx.arc(128, 158, 60, 0, Math.PI * 2);
   ctx.fillStyle = accent;
   ctx.fill();
   ctx.restore();
-  drawGlyph(ctx, def.type, 128, 158, 46, accent);
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 18;
+  drawGlyph(ctx, isTk ? def.power : def.type, 128, 158, 44, accent);
+  ctx.restore();
 
-  // description
-  ctx.fillStyle = '#c9bfd6';
+  // description + flavor
+  ctx.fillStyle = '#cfc4e0';
   ctx.font = '14px Georgia, serif';
-  wrapText(ctx, def.desc, 128, 248, 204, 17);
-  ctx.fillStyle = 'rgba(200,185,220,0.55)';
+  wrapText(ctx, def.desc, 128, 244, 208, 17);
+  ctx.fillStyle = 'rgba(200,185,220,0.5)';
   ctx.font = 'italic 12px Georgia, serif';
-  wrapText(ctx, def.flavor, 128, 296, 204, 14);
+  wrapText(ctx, def.flavor, 128, 300, 208, 14);
 
-  // stats
-  ctx.font = 'bold 22px Georgia, serif';
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#e8975c';
-  ctx.fillText(`⚔ ${def.atk}`, 26, 338);
-  ctx.textAlign = 'right';
-  ctx.fillStyle = '#6be08a';
-  ctx.fillText(`♥ ${def.hp}`, 230, 338);
+  // stats as floating glow text
+  if (!isTk) {
+    ctx.font = `bold 21px ${RUNIC}`;
+    ctx.save();
+    ctx.shadowBlur = 10;
+    ctx.textAlign = 'left';
+    ctx.shadowColor = '#e8975c';
+    ctx.fillStyle = '#e8975c';
+    ctx.fillText(`⚔ ${def.atk}`, 26, 336);
+    ctx.textAlign = 'right';
+    ctx.shadowColor = '#6be08a';
+    ctx.fillStyle = '#6be08a';
+    ctx.fillText(`♥ ${def.hp}`, 230, 336);
+    ctx.restore();
+  }
 
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -195,8 +269,8 @@ export function cardTexture(key) {
   return tex;
 }
 
-const CARD_W = 0.82;
-const CARD_H = 1.15;
+const CARD_W = 0.66;
+const CARD_H = 0.93;
 const HAND_Z = -4;
 
 const clamp = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
@@ -258,6 +332,21 @@ export class CardHand {
     this.hoverIndex = index;
   }
 
+  // Stable hover picking: inside the hand band the card is chosen by fan slot,
+  // so the lifted card doesn't slide out from under the cursor and flicker.
+  slotIndexAt() {
+    const n = this.meshes.length;
+    if (!n) return -1;
+    const p = this.pointerTarget || this.pointer;
+    if (p.y > -0.7) return -1; // above the hand band
+    const spread = Math.min(0.6, 4.2 / n);
+    const idx = Math.round(p.x / spread + (n - 1) / 2);
+    if (idx < 0 || idx >= n) return -1;
+    const off = idx - (n - 1) / 2;
+    if (Math.abs(p.x - off * spread) > Math.max(spread * 0.6, 0.34)) return -1;
+    return idx;
+  }
+
   setDragging(index, dragging) {
     this.dragIndex = dragging ? index : -1;
   }
@@ -288,7 +377,7 @@ export class CardHand {
     }
 
     const n = this.meshes.length;
-    const spread = Math.min(0.74, 4.6 / Math.max(n, 1));
+    const spread = Math.min(0.6, 4.2 / Math.max(n, 1));
     const k = 1 - Math.exp(-dt * 11);
 
     this.meshes.forEach((m, i) => {
@@ -308,16 +397,16 @@ export class CardHand {
         rz = clamp(-this.pointerVel.x * 0.03, -0.25, 0.25);
       } else {
         tx = off * spread;
-        ty = -1.52 + Math.cos(off * 0.28) * 0.16;
+        ty = -1.42 + Math.cos(off * 0.28) * 0.13;
         tz = HAND_Z + i * 0.012;
         rx = 0;
         ry = 0;
         rz = -off * 0.085;
         ts = 1;
         if (hovered) {
-          ty += 0.72;
-          tz += 0.35;
-          ts = 1.28;
+          ty += 0.78;
+          tz += 0.45;
+          ts = 1.6;
           rz = 0;
           // tilt toward wherever the cursor sits on the card face
           const nx = clamp((this.pointer.x - tx) / ((CARD_W * ts) / 2), -1, 1);

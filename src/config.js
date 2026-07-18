@@ -34,9 +34,10 @@ export const CAMERA_POSES = {
   bottom: { pos: [0, 15, 17.5], look: [0, -0.8, 5.2] },
   top: { pos: [0, 12.2, 13.2], look: [0, 4.8, -9.8] },
   kinaeto: { pos: [0, 10.4, -1.2], look: [0, 8.9, -13.6] },
-  // Fixed side views (arrow keys / swipe): stand at one wall, face the other.
-  sideLeft: { pos: [-10.5, 6.2, -1.5], look: [13.5, 3.4, -2.5] },
-  sideRight: { pos: [10.5, 6.2, -1.5], look: [-13.5, 3.4, -2.5] },
+  // Playable side angles (arrow keys / swipe): high over one flank, tilted
+  // down at the board, the far wall's carvings riding the top of the frame.
+  sideLeft: { pos: [-13.5, 15.5, 3.5], look: [4.5, -1.5, -2.2] },
+  sideRight: { pos: [13.5, 15.5, 3.5], look: [-4.5, -1.5, -2.2] },
 };
 
 export const WALLS = {
@@ -48,15 +49,15 @@ export const WALLS = {
 };
 
 export const RULES = {
-  drawPerTurn: 5,
+  drawInitial: 5, // opening hand
+  drawPerTurn: 3, // per-turn draw after that (Beckoning cards draw more)
   handMax: 10,
-  startEnergy: 3,
-  maxEnergy: 7,
-  energyGrowthEveryTurns: 2, // +1 max energy every N turns
+  impetusPerTurn: 4, // flame energy for calling troops — flat, never grows
+  kinaeticPerTurn: 1, // Kinaeto reaches through you once per turn
   obeliskHp: 20,
-  telekinesisPerTurn: 1,
   crushDamage: 3,
   pushDistance: 2,
+  beckonDraw: 3,
   // Placement: base units on rows 1-2 (+ obelisk room row 0),
   // fast units also on row 3.
   baseRows: [0, 1, 2],

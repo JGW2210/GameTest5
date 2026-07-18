@@ -75,9 +75,39 @@ export const CARDS = {
     desc: 'Blocks a tile. Telekinesis may hurl it anywhere.',
     flavor: 'Just a rock. Kinaeto is fond of rocks.',
   },
+
+  // Kinaetic Rites — cast through Kinaeto himself. They cost no Impetus but
+  // consume your single Kinaetic focus for the turn.
+  crush: {
+    key: 'crush',
+    name: 'Kinaetic Crush',
+    type: 'tk',
+    power: 'crush',
+    cost: 0,
+    desc: 'The hand clenches: 3 damage to any unit. Uses your Kinaetic focus.',
+    flavor: 'Somewhere beyond the veil, knuckles whiten.',
+  },
+  trip: {
+    key: 'trip',
+    name: 'Kinaetic Trip',
+    type: 'tk',
+    power: 'trip',
+    cost: 0,
+    desc: 'Sweep the legs: a unit skips its next action. Uses your Kinaetic focus.',
+    flavor: 'Even a saint is mostly ankles.',
+  },
+  beckon: {
+    key: 'beckon',
+    name: "Kinaeto's Beckoning",
+    type: 'tk',
+    power: 'beckon',
+    cost: 0,
+    desc: 'The hand beckons: draw 3 cards. Uses your Kinaetic focus.',
+    flavor: 'Come, it gestures. Bring friends.',
+  },
 };
 
-// Starting deck for the prototype run (drawn 5 at a time, reshuffles).
+// Starting deck for the prototype run (5 to open, 3 per turn, reshuffles).
 export const STARTER_DECK = [
   'zealot', 'zealot', 'zealot', 'zealot',
   'warden', 'warden', 'warden',
@@ -85,6 +115,9 @@ export const STARTER_DECK = [
   'fleet', 'fleet',
   'eye',
   'shrine', 'shrine',
+  'crush', 'crush',
+  'trip', 'trip',
+  'beckon', 'beckon',
 ];
 
 export const ENEMIES = {

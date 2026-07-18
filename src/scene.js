@@ -189,48 +189,103 @@ export class World {
     this.scene.add(g);
   }
 
-  // Carved cult slogans on the cave walls, lit up when a side view faces them.
+  // Carved cult slogans on the cave walls, lit up when a side view faces
+  // them. Drawn to read as rough rock-chisel work: every letter is struck
+  // at its own slight angle, edges chipped, cracks running off the strokes.
   carvingTexture(text, glyphs) {
     const c = document.createElement('canvas');
     c.width = 1024;
     c.height = 384;
     const ctx = c.getContext('2d');
 
-    // stone base with speckle
+    // stone base: uneven patches and grit, no polish
     ctx.fillStyle = '#2c2025';
     ctx.fillRect(0, 0, 1024, 384);
-    for (let i = 0; i < 700; i++) {
-      ctx.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,235,255,0.05)';
-      ctx.fillRect(Math.random() * 1024, Math.random() * 384, 2 + Math.random() * 5, 2 + Math.random() * 4);
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = `rgba(${Math.random() < 0.5 ? '10,5,10' : '90,70,85'},${0.04 + Math.random() * 0.05})`;
+      ctx.beginPath();
+      ctx.ellipse(Math.random() * 1024, Math.random() * 384, 40 + Math.random() * 120, 20 + Math.random() * 60, Math.random() * 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    for (let i = 0; i < 900; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.15)' : 'rgba(255,235,255,0.05)';
+      ctx.fillRect(Math.random() * 1024, Math.random() * 384, 1 + Math.random() * 4, 1 + Math.random() * 3);
     }
 
-    // chiselled text (highlight above, dark groove below)
+    const chisel = (draw, x, y, jitter) => {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate((Math.random() - 0.5) * jitter);
+      // chipped highlight on the sun side of the groove, then the dark cut,
+      // struck twice slightly apart so edges look broken, not printed
+      draw('rgba(200,175,215,0.20)', -2.5, -3);
+      draw('rgba(0,0,0,0.55)', 1.5, 2.5);
+      draw('#150e18', 0, 0);
+      ctx.restore();
+    };
+
     const lines = text.length > 18 ? [text.slice(0, text.lastIndexOf(' ', 18)), text.slice(text.lastIndexOf(' ', 18) + 1)] : [text];
+    const size = lines.length > 1 ? 88 : 104;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    if ('letterSpacing' in ctx) ctx.letterSpacing = '10px';
-    const size = lines.length > 1 ? 86 : 96;
-    ctx.font = `bold ${size}px Georgia, serif`;
-    lines.forEach((line, i) => {
-      const y = 148 + i * (size + 14) - (lines.length - 1) * 40;
-      ctx.fillStyle = 'rgba(215,190,235,0.28)';
-      ctx.fillText(line, 512, y - 3);
-      ctx.fillStyle = '#140d16';
-      ctx.fillText(line, 512, y);
+    ctx.font = `${size}px "Uncial Antiqua", Georgia, serif`;
+
+    // strike each letter separately with its own slight rotation and drift
+    lines.forEach((line, li) => {
+      const y = 138 + li * (size + 18) - (lines.length - 1) * 34;
+      const widths = [...line].map((ch) => ctx.measureText(ch).width);
+      const total = widths.reduce((a, b) => a + b, 0) + (line.length - 1) * 6;
+      let x = 512 - total / 2;
+      [...line].forEach((ch, i) => {
+        const cx = x + widths[i] / 2;
+        const cy = y + (Math.random() - 0.5) * 10;
+        chisel((color, dx, dy) => {
+          ctx.fillStyle = color;
+          ctx.fillText(ch, dx, dy);
+        }, cx, cy, 0.09);
+        x += widths[i] + 6;
+      });
     });
 
-    // hand carvings flanking the text
-    const gy = lines.length > 1 ? 320 : 280;
+    // hand carvings flanking the text, struck the same way
+    const gy = lines.length > 1 ? 316 : 286;
     glyphs.forEach((type, i) => {
-      const gx = 512 + (i === 0 ? -330 : 330);
-      drawGlyph(ctx, type, gx + 2, gy - 2, 52, 'rgba(215,190,235,0.25)');
-      drawGlyph(ctx, type, gx, gy, 52, '#140d16');
+      const gx = 512 + (i === 0 ? -350 : 350);
+      chisel((color, dx, dy) => drawGlyph(ctx, type, dx, dy, 54, color), gx, gy, 0.16);
     });
+
+    // cracks wandering off the carvings
+    ctx.strokeStyle = 'rgba(10,5,12,0.5)';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 9; i++) {
+      let cx = Math.random() * 1024;
+      let cy = Math.random() * 384;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy);
+      for (let s = 0; s < 5 + Math.random() * 5; s++) {
+        cx += (Math.random() - 0.5) * 90;
+        cy += (Math.random() - 0.3) * 55;
+        ctx.lineTo(cx, cy);
+      }
+      ctx.stroke();
+    }
 
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.anisotropy = 4;
     return tex;
+  }
+
+  // Re-render the carvings (used once the runic webfont finishes loading).
+  refreshWallCarvings() {
+    for (const side of ['left', 'right']) {
+      const old = this.walls[side].mat;
+      const tex = this.carvingTexture(WALLS[side].text, WALLS[side].glyphs);
+      old.map.dispose();
+      old.map = tex;
+      old.emissiveMap = tex;
+      old.needsUpdate = true;
+    }
   }
 
   buildWalls() {

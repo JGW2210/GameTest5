@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { World } from './scene.js';
 import { Board } from './board.js';
 import { Kinaeto } from './kinaeto.js';
-import { CardHand } from './cards3d.js';
+import { CardHand, clearCardTextures } from './cards3d.js';
 import { Hud, PATH_NAMES } from './hud.js';
 import { Battle } from './battle.js';
 import { Tweens, Ease, sleep, floatText } from './effects.js';
@@ -22,11 +22,11 @@ const cardHand = new CardHand(world.camera);
 const hud = new Hud();
 
 let battle = null;
-let mode = 'menu'; // menu | idle | dragCard | tkPickUnit | tkPickDest | busy
+let mode = 'menu'; // menu | idle | dragCard | tkSelect | busy
 let dragIndex = -1;
-let tkPower = null;
-let tkTargetUid = null;
-let tkDests = [];
+let dragIsRite = false; // dragged card is a Kinaetic Rite (targets units)
+let tkUid = null; // unit grabbed for a telekinetic move
+let tkOptions = []; // {path,row,power} tiles Kinaeto can carry it to
 let warnCount = 0;
 
 const unitViews = new Map(); // uid -> {group, hp, maxHp, path, row, boss}
@@ -84,11 +84,11 @@ function validPlacementCells(handIndex) {
 function refreshHud() {
   hud.setTurn(battle.turn);
   hud.setWave(`Wave ${battle.wavesSpawned} / ${battle.def.waves.length}`);
-  hud.setEnergy(battle.energy, battle.maxEnergy);
+  hud.setImpetus(battle.impetus, RULES.impetusPerTurn);
+  hud.setKinaetic(battle.kinaeticAvailable());
   hud.setObelisk(battle.obeliskHp, battle.obeliskMaxHp);
   hud.setCounts(battle.deck.length, battle.discard.length);
-  hud.setTk(battle.tkUsed, RULES.telekinesisPerTurn, tkPower);
-  cardHand.setAffordable(battle.energy);
+  cardHand.setAffordable(battle.impetus);
 }
 
 function setMode(next) {
@@ -97,10 +97,9 @@ function setMode(next) {
   ghost.visible = false;
   if (next !== 'idle') world.glanceTarget = 0;
   const hints = {
-    idle: 'Drag a card onto a glowing tile — or channel a telekinetic power from the right panel.',
-    dragCard: 'Drop the follower on a glowing tile.',
-    tkPickUnit: `Choose a target for ${tkPower ? tkPower.toUpperCase() : ''} — right-click to cancel.`,
-    tkPickDest: 'Choose a destination tile — right-click to cancel.',
+    idle: 'Drag a card to a glowing tile · click a unit to let Kinaeto move it',
+    dragCard: dragIsRite ? 'Cast the rite on a unit' : 'Drop the follower on a glowing tile',
+    tkSelect: 'Choose where the hand carries it — right-click to cancel',
     busy: '',
     menu: '',
   };
@@ -111,11 +110,10 @@ function setMode(next) {
 function cancelAction() {
   if (mode === 'dragCard') cardHand.setDragging(dragIndex, false);
   dragIndex = -1;
-  tkPower = null;
-  tkTargetUid = null;
-  tkDests = [];
+  dragIsRite = false;
+  tkUid = null;
+  tkOptions = [];
   if (mode !== 'busy' && mode !== 'menu') setMode('idle');
-  if (battle) hud.setTk(battle.tkUsed, RULES.telekinesisPerTurn, null);
 }
 
 // ---------------------------------------------------------------------------
@@ -313,10 +311,18 @@ async function processEvents(events) {
     switch (ev.type) {
       case 'turnStart': {
         hud.setTurn(ev.turn);
-        hud.setEnergy(ev.energy, ev.maxEnergy);
-        cardHand.setHand(ev.hand, ev.energy);
+        hud.setImpetus(ev.impetus, ev.impetusMax);
+        hud.setKinaetic(ev.kinaetic);
+        cardHand.setHand(ev.hand, ev.impetus);
         hud.setCounts(battle.deck.length, battle.discard.length);
         await sleep(250);
+        break;
+      }
+      case 'draw': {
+        // Kinaeto's Beckoning — fresh cards rise into the fan
+        cardHand.setHand(ev.hand, battle.impetus);
+        hud.setCounts(battle.deck.length, battle.discard.length);
+        await sleep(350);
         break;
       }
       case 'place': {
@@ -504,26 +510,45 @@ window.addEventListener('pointermove', (e) => {
     world.glanceTarget = 0;
   }
   if (mode === 'idle') {
-    const card = pickCard();
+    const slot = cardHand.slotIndexAt();
+    const card = slot >= 0 ? cardHand.meshes[slot] : pickCard();
     cardHand.setHover(card ? card.userData.index : -1);
-    document.body.style.cursor = card ? 'grab' : 'default';
+    if (card) {
+      document.body.style.cursor = 'grab';
+    } else {
+      const unit = pickUnit();
+      document.body.style.cursor = unit && battle.canTkGrab(unit.userData.uid).ok ? 'pointer' : 'default';
+    }
   } else if (mode === 'dragCard') {
-    const tile = pickTile();
     board.clearHover();
     ghost.visible = false;
-    if (tile && battle.canPlaceCard(dragIndex, tile.userData.path, tile.userData.row).ok) {
-      board.hoverTile(tile);
-      ghost.position.set(tile.position.x, tile.position.y + 0.2, tile.position.z);
-      ghost.visible = true;
+    if (dragIsRite) {
+      const unit = pickUnit();
+      document.body.style.cursor = unit ? 'pointer' : 'default';
+      if (unit) {
+        const v = unitViews.get(unit.userData.uid);
+        if (v) {
+          ghost.position.copy(v.group.position);
+          ghost.position.y += 0.15;
+          ghost.visible = true;
+        }
+      }
+    } else {
+      const tile = pickTile();
+      if (tile && battle.canPlaceCard(dragIndex, tile.userData.path, tile.userData.row).ok) {
+        board.hoverTile(tile);
+        ghost.position.set(tile.position.x, tile.position.y + 0.2, tile.position.z);
+        ghost.visible = true;
+      }
     }
-  } else if (mode === 'tkPickUnit') {
-    const unit = pickUnit();
-    document.body.style.cursor = unit ? 'pointer' : 'default';
-  } else if (mode === 'tkPickDest') {
+  } else if (mode === 'tkSelect') {
     const tile = pickTile();
     board.clearHover();
-    if (tile && tkDests.some((d) => d.path === tile.userData.path && d.row === tile.userData.row)) {
+    if (tile && tkOptions.some((d) => d.path === tile.userData.path && d.row === tile.userData.row)) {
       board.hoverTile(tile);
+      document.body.style.cursor = 'pointer';
+    } else {
+      document.body.style.cursor = 'default';
     }
   }
 });
@@ -533,55 +558,63 @@ window.addEventListener('pointerdown', (e) => {
   setPointer(e);
 
   if (mode === 'idle') {
-    const card = pickCard();
+    const slot = cardHand.slotIndexAt();
+    const card = slot >= 0 ? cardHand.meshes[slot] : pickCard();
     if (card) {
-      if (!card.userData.affordable) {
-        hud.toast('Not enough Kinaetic energy');
+      const def = CARDS[card.userData.key];
+      if (def.type === 'tk') {
+        if (!battle.kinaeticAvailable()) {
+          hud.toast('Kinaetic focus already spent this turn');
+          return;
+        }
+        dragIsRite = true;
+        dragIndex = card.userData.index;
+        cardHand.setDragging(dragIndex, true);
+        setMode('dragCard');
+        hud.setHint(def.power === 'beckon' ? 'Release above the battlefield to beckon' : 'Cast the rite on a unit');
         return;
       }
+      if (!card.userData.affordable) {
+        hud.toast('Not enough Impetus');
+        return;
+      }
+      dragIsRite = false;
       dragIndex = card.userData.index;
       cardHand.setDragging(dragIndex, true);
       setMode('dragCard');
       board.highlight(validPlacementCells(dragIndex), COLORS.kinaetic);
       document.body.style.cursor = 'grabbing';
-    }
-  } else if (mode === 'tkPickUnit') {
-    const unitObj = pickUnit();
-    if (!unitObj) return;
-    const uid = unitObj.userData.uid;
-    const check = battle.canTkTarget(tkPower, uid);
-    if (!check.ok) {
-      hud.toast(check.reason);
       return;
     }
-    if (tkPower === 'crush' || tkPower === 'trip') {
-      const result = battle.applyTk(tkPower, uid);
-      if (result.ok) {
-        tkPower = null;
-        processEvents(result.events);
-      } else {
-        hud.toast(result.reason);
+    // No card under the pointer — try grabbing a unit with Kinaeto's hand.
+    const unitObj = pickUnit();
+    if (unitObj) {
+      const uid = unitObj.userData.uid;
+      const check = battle.canTkGrab(uid);
+      if (!check.ok) {
+        hud.toast(check.reason);
+        return;
       }
-    } else {
-      tkDests = battle.tkDestinations(tkPower, uid);
-      if (tkDests.length === 0) {
+      tkOptions = battle.tkMoveOptions(uid);
+      if (tkOptions.length === 0) {
         hud.toast('No tile within Kinaeto’s reach');
         return;
       }
-      tkTargetUid = uid;
-      setMode('tkPickDest');
-      board.highlight(tkDests, COLORS.eldritch);
+      tkUid = uid;
+      setMode('tkSelect');
+      // adjacent tiles (Move) glow teal; the far throws (Push) glow violet
+      board.highlight(tkOptions.filter((o) => o.power === 'move'), COLORS.eldritch);
+      board.highlight(tkOptions.filter((o) => o.power === 'push'), COLORS.kinaetic);
     }
-  } else if (mode === 'tkPickDest') {
+  } else if (mode === 'tkSelect') {
     const tile = pickTile();
-    if (tile && tkDests.some((d) => d.path === tile.userData.path && d.row === tile.userData.row)) {
-      const result = battle.applyTk(tkPower, tkTargetUid, {
+    if (tile && tkOptions.some((d) => d.path === tile.userData.path && d.row === tile.userData.row)) {
+      const result = battle.applyTkMove(tkUid, {
         path: tile.userData.path,
         row: tile.userData.row,
       });
-      tkPower = null;
-      tkTargetUid = null;
-      tkDests = [];
+      tkUid = null;
+      tkOptions = [];
       if (result.ok) {
         processEvents(result.events);
       } else {
@@ -597,8 +630,44 @@ window.addEventListener('pointerdown', (e) => {
 window.addEventListener('pointerup', (e) => {
   if (mode !== 'dragCard') return;
   setPointer(e);
-  const tile = pickTile();
   document.body.style.cursor = 'default';
+
+  if (dragIsRite) {
+    const def = CARDS[cardHand.meshes[dragIndex]?.userData.key];
+    if (def && def.power === 'beckon') {
+      // released anywhere above the hand
+      if (pointer.y > -0.45) {
+        const result = battle.playTkCard(dragIndex);
+        if (result.ok) {
+          cardHand.removeCardVisual(dragIndex);
+          dragIndex = -1;
+          dragIsRite = false;
+          setMode('busy');
+          processEvents(result.events);
+          return;
+        }
+        hud.toast(result.reason);
+      }
+    } else {
+      const unitObj = pickUnit();
+      if (unitObj) {
+        const result = battle.playTkCard(dragIndex, unitObj.userData.uid);
+        if (result.ok) {
+          cardHand.removeCardVisual(dragIndex);
+          dragIndex = -1;
+          dragIsRite = false;
+          setMode('busy');
+          processEvents(result.events);
+          return;
+        }
+        hud.toast(result.reason);
+      }
+    }
+    cancelAction();
+    return;
+  }
+
+  const tile = pickTile();
   if (tile) {
     const { path, row } = tile.userData;
     const check = battle.canPlaceCard(dragIndex, path, row);
@@ -661,19 +730,6 @@ window.addEventListener('pointerup', (e) => {
   }
 });
 
-hud.onTkSelect = (power) => {
-  if (mode !== 'idle' && mode !== 'tkPickUnit' && mode !== 'tkPickDest') return;
-  if (!battle.tkAvailable()) {
-    hud.toast('Telekinesis already used this turn');
-    return;
-  }
-  tkPower = power;
-  tkTargetUid = null;
-  tkDests = [];
-  setMode('tkPickUnit');
-  hud.setTk(battle.tkUsed, RULES.telekinesisPerTurn, power);
-};
-
 hud.onEndTurn = () => {
   if (mode !== 'idle') return;
   cancelAction();
@@ -686,6 +742,15 @@ hud.onEndTurn = () => {
 
 async function startBattle() {
   hud.showScreen(null);
+  // Card faces and wall carvings are canvas-drawn: make sure the runic font
+  // is in before anything renders text.
+  try {
+    await document.fonts.load('20px "Uncial Antiqua"');
+    clearCardTextures();
+    world.refreshWallCarvings();
+  } catch (e) {
+    // font failure falls back to serif — carry on
+  }
   battle = new Battle(BATTLE_ONE);
   warnCount = 0;
   refreshHud();

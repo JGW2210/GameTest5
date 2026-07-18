@@ -2,7 +2,8 @@
 // returns an ordered list of events the view layer animates one by one.
 //
 // Event types:
-//  turnStart {turn, energy, maxEnergy, hand}    — new player turn began
+//  turnStart {turn, impetus, impetusMax, kinaetic, hand} — new player turn
+//  draw     {hand}                              — extra cards drawn mid-turn
 //  place    {unit}                              — card resolved onto a tile
 //  warn     {paths, isBoss}                     — forewarning of next wave
 //  spawn    {unit, isBoss}                      — enemy emerged at a path entrance
@@ -35,26 +36,27 @@ export class Battle {
   constructor(def) {
     this.def = def;
     this.turn = 1;
-    this.maxEnergy = RULES.startEnergy;
-    this.energy = RULES.startEnergy;
+    // Impetus: flame energy that calls troops. Flat per turn — never grows.
+    this.impetus = RULES.impetusPerTurn;
+    // Kinaetic focus: Kinaeto reaches through you once per turn. Spent by
+    // moving/pushing units or by casting a Kinaetic Rite card.
+    this.kinaeticUsed = 0;
     this.obeliskHp = def.obeliskHp;
     this.obeliskMaxHp = def.obeliskHp;
     this.units = new Map();
     this.deck = shuffle(STARTER_DECK);
     this.hand = [];
     this.discard = [];
-    this.tkUsed = 0;
     this.wavesSpawned = 0;
     this.over = false;
     this.result = null;
-    this.pendingWarn = null; // paths warned for the upcoming wave
   }
 
   // ---- setup -------------------------------------------------------------
 
   start() {
     const events = [];
-    this.drawCards(RULES.drawPerTurn);
+    this.drawCards(RULES.drawInitial);
     events.push(this.turnStartEvent());
     const first = this.def.waves[0];
     if (first && first.warnAtEnd === 0) events.push(this.makeWarn(first));
@@ -65,10 +67,15 @@ export class Battle {
     return {
       type: 'turnStart',
       turn: this.turn,
-      energy: this.energy,
-      maxEnergy: this.maxEnergy,
+      impetus: this.impetus,
+      impetusMax: RULES.impetusPerTurn,
+      kinaetic: this.kinaeticAvailable(),
       hand: this.hand.slice(),
     };
+  }
+
+  kinaeticAvailable() {
+    return !this.over && this.kinaeticUsed < RULES.kinaeticPerTurn;
   }
 
   // Draw up to n cards, never past the hand cap; undrawn cards stay in the
@@ -114,7 +121,8 @@ export class Battle {
     const key = this.hand[handIndex];
     if (!key) return { ok: false, reason: 'no card' };
     const def = CARDS[key];
-    if (def.cost > this.energy) return { ok: false, reason: 'Not enough Kinaetic energy' };
+    if (def.type === 'tk') return { ok: false, reason: 'Rites are cast on units, not tiles' };
+    if (def.cost > this.impetus) return { ok: false, reason: 'Not enough Impetus' };
     if (!this.placementRows(key).includes(row)) {
       return { ok: false, reason: def.fast ? 'Place on your half or the obelisk room' : 'Base followers deploy on the first two tiles (or the obelisk room)' };
     }
@@ -127,7 +135,7 @@ export class Battle {
     if (!check.ok) return { ok: false, reason: check.reason, events: [] };
     const key = this.hand.splice(handIndex, 1)[0];
     const def = CARDS[key];
-    this.energy -= def.cost;
+    this.impetus -= def.cost;
     this.discard.push(key);
     const unit = {
       uid: uidCounter++,
@@ -149,88 +157,106 @@ export class Battle {
     return { ok: true, events: [{ type: 'place', unit: this.snapshot(unit) }] };
   }
 
-  // ---- telekinesis -------------------------------------------------------
+  // ---- telekinesis: click a unit, choose a tile --------------------------
 
-  tkAvailable() {
-    return !this.over && this.tkUsed < RULES.telekinesisPerTurn;
-  }
-
-  canTkTarget(power, uid) {
+  canTkGrab(uid) {
     const u = this.units.get(uid);
     if (!u) return { ok: false, reason: 'no target' };
-    if (!this.tkAvailable()) return { ok: false, reason: 'Telekinesis already used this turn' };
-    if (power === 'move' || power === 'push') {
-      if (u.side === 'player' && u.type === 'sign') {
-        return { ok: false, reason: 'Moving a Hand Sign would sever its link to Kinaeto' };
+    if (!this.kinaeticAvailable()) return { ok: false, reason: 'Kinaetic focus already spent this turn' };
+    if (u.side === 'player' && u.type === 'sign') {
+      return { ok: false, reason: 'Moving a Hand Sign would sever its link to Kinaeto' };
+    }
+    if (u.boss) return { ok: false, reason: 'Too heavy — his faith anchors him' };
+    return { ok: true };
+  }
+
+  // All tiles Kinaeto could carry this unit to: adjacent tiles are a Move,
+  // two tiles along its own path are a Push.
+  tkMoveOptions(uid) {
+    const u = this.units.get(uid);
+    if (!u || !this.canTkGrab(uid).ok) return [];
+    const options = [];
+    const candidates = [
+      { path: u.path, row: u.row - 1, power: 'move' },
+      { path: u.path, row: u.row + 1, power: 'move' },
+      { path: u.path - 1, row: u.row, power: 'move' },
+      { path: u.path + 1, row: u.row, power: 'move' },
+    ];
+    for (const c of candidates) {
+      if (c.path < 0 || c.path >= PATHS || c.row < 0 || c.row >= ROWS) continue;
+      if (this.unitAt(c.path, c.row, u.side)) continue; // same side blocks
+      options.push(c);
+    }
+    for (const dir of [-1, 1]) {
+      let landing = u.row;
+      for (let step = 0; step < RULES.pushDistance; step++) {
+        const next = landing + dir;
+        if (next < 0 || next >= ROWS) break;
+        if (this.unitAt(u.path, next, u.side)) break; // same side blocks
+        landing = next;
       }
-      if (u.boss) return { ok: false, reason: 'Too heavy — his faith anchors him' };
+      if (Math.abs(landing - u.row) > 1) options.push({ path: u.path, row: landing, power: 'push' });
+    }
+    return options;
+  }
+
+  applyTkMove(uid, dest) {
+    const events = [];
+    const check = this.canTkGrab(uid);
+    if (!check.ok) return { ok: false, reason: check.reason, events };
+    const u = this.units.get(uid);
+    const found = this.tkMoveOptions(uid).find((d) => d.path === dest.path && d.row === dest.row);
+    if (!found) return { ok: false, reason: 'Kinaeto cannot reach that tile', events };
+    const from = { path: u.path, row: u.row };
+    u.path = dest.path;
+    u.row = dest.row;
+    events.push({ type: 'move', uid, from, to: { path: dest.path, row: dest.row }, tk: true, power: found.power });
+    this.kinaeticUsed++;
+    this.checkEnd(events);
+    return { ok: true, events };
+  }
+
+  // ---- Kinaetic Rite cards (crush / trip / beckon) ------------------------
+
+  canPlayTkCard(handIndex, targetUid) {
+    if (this.over) return { ok: false, reason: 'battle over' };
+    const key = this.hand[handIndex];
+    const def = key && CARDS[key];
+    if (!def || def.type !== 'tk') return { ok: false, reason: 'not a rite' };
+    if (!this.kinaeticAvailable()) return { ok: false, reason: 'Kinaetic focus already spent this turn' };
+    if (def.power !== 'beckon' && !this.units.get(targetUid)) {
+      return { ok: false, reason: 'The rite needs a target' };
     }
     return { ok: true };
   }
 
-  // Valid destination tiles for a move/push on unit `uid`.
-  tkDestinations(power, uid) {
-    const u = this.units.get(uid);
-    if (!u) return [];
-    const dests = [];
-    if (power === 'move') {
-      const candidates = [
-        { path: u.path, row: u.row - 1 },
-        { path: u.path, row: u.row + 1 },
-        { path: u.path - 1, row: u.row },
-        { path: u.path + 1, row: u.row },
-      ];
-      for (const c of candidates) {
-        if (c.path < 0 || c.path >= PATHS || c.row < 0 || c.row >= ROWS) continue;
-        if (this.unitAt(c.path, c.row, u.side)) continue; // same side blocks
-        dests.push(c);
-      }
-    } else if (power === 'push') {
-      for (const dir of [-1, 1]) {
-        let landing = u.row;
-        for (let step = 0; step < RULES.pushDistance; step++) {
-          const next = landing + dir;
-          if (next < 0 || next >= ROWS) break;
-          if (this.unitAt(u.path, next, u.side)) break; // same side blocks
-          landing = next;
-        }
-        if (landing !== u.row) dests.push({ path: u.path, row: landing });
-      }
-    }
-    return dests;
-  }
-
-  applyTk(power, uid, dest) {
+  playTkCard(handIndex, targetUid) {
+    const check = this.canPlayTkCard(handIndex, targetUid);
+    if (!check.ok) return { ok: false, reason: check.reason, events: [] };
+    const key = this.hand.splice(handIndex, 1)[0];
+    const def = CARDS[key];
+    this.discard.push(key);
+    this.kinaeticUsed++;
     const events = [];
-    const check = this.canTkTarget(power, uid);
-    if (!check.ok) return { ok: false, reason: check.reason, events };
-    const u = this.units.get(uid);
 
-    if (power === 'move' || power === 'push') {
-      const dests = this.tkDestinations(power, uid);
-      const found = dests.find((d) => d.path === dest.path && d.row === dest.row);
-      if (!found) return { ok: false, reason: 'Kinaeto cannot reach that tile', events };
-      const from = { path: u.path, row: u.row };
-      u.path = dest.path;
-      u.row = dest.row;
-      events.push({ type: 'move', uid, from, to: { ...dest }, tk: true, power });
-    } else if (power === 'crush') {
+    if (def.power === 'crush') {
+      const u = this.units.get(targetUid);
       let dmg = RULES.crushDamage;
       if (u.boss) dmg = Math.floor(dmg / 2);
       u.hp -= dmg;
-      events.push({ type: 'crush', uid, dmg, hp: u.hp });
+      events.push({ type: 'crush', uid: targetUid, dmg, hp: u.hp });
       if (u.hp <= 0) {
-        this.units.delete(uid);
-        events.push({ type: 'die', uid });
+        this.units.delete(targetUid);
+        events.push({ type: 'die', uid: targetUid });
       }
-    } else if (power === 'trip') {
-      u.stunned = true;
-      events.push({ type: 'trip', uid });
-    } else {
-      return { ok: false, reason: 'unknown power', events };
+    } else if (def.power === 'trip') {
+      this.units.get(targetUid).stunned = true;
+      events.push({ type: 'trip', uid: targetUid });
+    } else if (def.power === 'beckon') {
+      this.drawCards(RULES.beckonDraw);
+      events.push({ type: 'draw', hand: this.hand.slice() });
     }
 
-    this.tkUsed++;
     this.checkEnd(events);
     return { ok: true, events };
   }
@@ -247,14 +273,10 @@ export class Battle {
     this.emitDueWarn(events);
     if (this.checkEnd(events)) return events;
 
-    // next turn — the hand carries over; draw more up to the cap
+    // next turn — the hand carries over; draw 3 more up to the cap
     this.turn++;
-    this.maxEnergy = Math.min(
-      RULES.startEnergy + Math.floor((this.turn - 1) / RULES.energyGrowthEveryTurns),
-      RULES.maxEnergy
-    );
-    this.energy = this.maxEnergy;
-    this.tkUsed = 0;
+    this.impetus = RULES.impetusPerTurn;
+    this.kinaeticUsed = 0;
     this.drawCards(RULES.drawPerTurn);
     events.push(this.turnStartEvent());
     return events;
