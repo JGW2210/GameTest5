@@ -2,7 +2,7 @@
 // the bottom of the view. Faces are canvas textures drawn per card type.
 
 import * as THREE from 'three';
-import { CARDS } from './data.js';
+import { CARDS } from '#game/data.js';
 
 const TYPE_COLORS = {
   fist: '#c8452f',

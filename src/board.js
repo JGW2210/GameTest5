@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import {
   PATHS, ROWS, PATH_X, rowZ, TILE_SIZE, TILE_H, OBELISK_ROW, COLORS,
-} from './config.js';
+} from '#game/config.js';
 
 export class Board {
   constructor(scene) {

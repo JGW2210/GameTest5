@@ -6,13 +6,22 @@
   <title>KINAETO — Beneath the Flame</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🜏</text></svg>" />
   <link rel="preload" href="vendor/fonts/uncial-antiqua-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
-  <link rel="stylesheet" href="style.css" />
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "./vendor/three.module.min.js"
-      }
-    }
+  <!-- Cache-buster: bump GAME_VERSION on every release. It stamps ?v= onto the
+       stylesheet and every module URL via the import map, so browsers fetch
+       fresh copies the moment this file updates (GitHub Pages caches HTML for
+       ~10 minutes; every asset behind it busts instantly). Game modules import
+       each other through bare "#game/*" specifiers — resolved here in the
+       browser, and by package.json "imports" for Node tests. -->
+  <script>
+    const GAME_VERSION = '2026-07-18-2';
+    const GAME_MODULES = [
+      'config', 'data', 'effects', 'battle', 'board', 'scene', 'units',
+      'kinaeto', 'cards3d', 'hud', 'meta', 'tutorial', 'hub', 'main',
+    ];
+    const imports = { three: `./vendor/three.module.min.js?v=${GAME_VERSION}` };
+    for (const m of GAME_MODULES) imports[`#game/${m}.js`] = `./src/${m}.js?v=${GAME_VERSION}`;
+    document.write(`<script type="importmap">${JSON.stringify({ imports })}<\/script>`);
+    document.write(`<link rel="stylesheet" href="style.css?v=${GAME_VERSION}" />`);
   </script>
 </head>
 <body>
@@ -85,6 +94,7 @@
   <!-- menu / victory / defeat -->
   <div id="overlay"></div>
 
-  <script type="module" src="src/main.js"></script>
+  <!-- entry point goes through the import map so it gets the version stamp -->
+  <script type="module">import '#game/main.js';</script>
 </body>
 </html>

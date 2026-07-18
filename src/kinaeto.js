@@ -2,8 +2,8 @@
 // eye set in its palm, reaching through the portal above the obelisk room.
 
 import * as THREE from 'three';
-import { COLORS, PORTAL_POS } from './config.js';
-import { Ease } from './effects.js';
+import { COLORS, PORTAL_POS } from '#game/config.js';
+import { Ease } from '#game/effects.js';
 
 const skinMat = () =>
   new THREE.MeshStandardMaterial({

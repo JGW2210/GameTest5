@@ -136,6 +136,16 @@ his whole path every second turn.
 
 GitHub Pages serves the repository root **from the `main` branch** ("Deploy from a
 branch" mode; `.nojekyll` skips Jekyll processing). Every push to `main` redeploys.
+
+**Cache-busting.** Browsers cache ES modules aggressively and nothing in a no-build
+setup ever busts them — so `index.html` carries a single `GAME_VERSION` constant that
+stamps `?v=` onto the stylesheet, three.js, and every game module via a generated
+import map. Game modules import each other through bare `#game/*` specifiers, resolved
+by that import map in the browser and by `package.json` `"imports"` in Node (tests).
+**Bump `GAME_VERSION` in `index.html` whenever you ship** — once the fresh HTML lands
+(Pages caches it for ~10 minutes at most), every asset behind it fetches fresh
+immediately. If a change ever seems missing on the live site, hard-refresh once and
+check that the release actually bumped the version.
 `.github/workflows/deploy.yml` is a leftover from the Actions-based deploy mode — it is
 unused (and will show failed runs) while Pages is in branch mode; delete it or switch the
 Pages source to GitHub Actions if preferred.
@@ -143,7 +153,8 @@ Pages source to GitHub Actions if preferred.
 ## Project layout
 
 ```
-index.html          shell, import map, HUD DOM (+ hub panels, dream, flash)
+package.json        no dependencies — "type": "module" + "#game/*" import mapping for Node
+index.html          shell, GAME_VERSION cache-buster + generated import map, HUD DOM
 style.css           boxless glowing HUD / overlay styling, runic font face, hub panels
 vendor/             vendored three.module.min.js (r160) + Uncial Antiqua woff2
 src/config.js       board layout, RULES (all balance knobs), camera poses, palette, themes
