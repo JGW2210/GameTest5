@@ -9,6 +9,10 @@ import {
 export class Board {
   constructor(scene) {
     this.scene = scene;
+    // Everything the board owns lives in one group so the hub (which has no
+    // battlefield) can hide it wholesale.
+    this.group = new THREE.Group();
+    scene.add(this.group);
     this.tiles = []; // tiles[path][row] = mesh
     this.tileList = [];
     this.highlighted = new Set();
@@ -34,7 +38,7 @@ export class Board {
         mesh.position.set(PATH_X[p], TILE_H / 2 + (r === OBELISK_ROW ? 0.55 : 0), rowZ(r));
         mesh.receiveShadow = true;
         mesh.userData = { isTile: true, path: p, row: r, zone, baseColor: base };
-        this.scene.add(mesh);
+        this.group.add(mesh);
 
         const edge = new THREE.Mesh(
           edgeGeo,
@@ -42,7 +46,7 @@ export class Board {
         );
         edge.position.copy(mesh.position);
         edge.position.y -= TILE_H * 0.25;
-        this.scene.add(edge);
+        this.group.add(edge);
 
         this.tiles[p].push(mesh);
         this.tileList.push(mesh);
@@ -62,7 +66,7 @@ export class Board {
       );
       ring.rotation.x = -Math.PI / 2;
       ring.position.set(PATH_X[p], 0.32, rowZ(ROWS - 1) + 1.35);
-      this.scene.add(ring);
+      this.group.add(ring);
       this.gazeHeralds.push(ring);
     }
 
@@ -84,8 +88,23 @@ export class Board {
       );
       inner.position.z = 0.01;
       sigil.add(inner);
-      this.scene.add(sigil);
+      this.group.add(sigil);
       this.warnMarkers.push({ sigil, inner, active: false });
+    }
+  }
+
+  setVisible(v) {
+    this.group.visible = v;
+  }
+
+  // Re-skin the tiles for the current stage (raw cave rock vs the sanctum's
+  // cut stone). Highlights key off emissive, so only base colors change.
+  setTheme(theme) {
+    for (const tile of this.tileList) {
+      const base = theme[tile.userData.zone];
+      if (base === undefined) continue;
+      tile.userData.baseColor = base;
+      tile.material.color.setHex(base);
     }
   }
 

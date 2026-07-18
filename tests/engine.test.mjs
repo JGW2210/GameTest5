@@ -1,7 +1,7 @@
 // Engine checks for the battle-flow rework: stacks, clashes, phases, burn —
 // plus regressions for cries, keywords, gaze, and intents.
 import { Battle } from '../src/battle.js';
-import { BATTLE_ONE } from '../src/data.js';
+import { BATTLE_ONE, TUTORIAL_BATTLE, TUTORIAL_DECK, CARDS } from '../src/data.js';
 import { RULES } from '../src/config.js';
 
 let pass = 0;
@@ -169,6 +169,45 @@ console.log('regressions: cries, gaze, rites');
   const evs = b.endTurn();
   check('gaze still rotates', b.gazePath === next);
   check('turnStart carries intents', evs.some((ev) => ev.type === 'turnStart' && Array.isArray(ev.intents)));
+}
+
+console.log('injectable deck / cards / draw order');
+{
+  const b = new Battle(TUTORIAL_BATTLE, { deck: TUTORIAL_DECK, noShuffle: true });
+  b.start();
+  check('opening hand drawn in listed order',
+    JSON.stringify(b.hand) === JSON.stringify(TUTORIAL_DECK.slice(0, RULES.drawInitial)),
+    JSON.stringify(b.hand));
+  const forged = { ...CARDS, zealot: { ...CARDS.zealot, atk: CARDS.zealot.atk + 1, hp: CARDS.zealot.hp + 1 } };
+  const b2 = new Battle(BATTLE_ONE, { cards: forged });
+  b2.start();
+  b2.hand = ['zealot'];
+  b2.impetus = 8;
+  b2.playCard(0, 0, 1);
+  const z = [...b2.units.values()].find((u) => u.key === 'zealot');
+  check('forged stats reach the unit', z.atk === CARDS.zealot.atk + 1 && z.maxHp === CARDS.zealot.hp + 1, `atk=${z.atk}`);
+}
+
+console.log('tutorial scripting: preset, forced spawn, doom');
+{
+  const b = new Battle(TUTORIAL_BATTLE, { deck: TUTORIAL_DECK, noShuffle: true });
+  b.start();
+  const preset = b.placePreset('warden', 1, 1);
+  check('preset unit exists on its tile', b.unitAt(1, 1, 'player')?.uid === preset.uid);
+  check('preset costs nothing', b.impetus === RULES.impetusPerTurn);
+  const spawnEvents = b.spawnWaveNow(b.def.waves[0]);
+  check('forced wave spawns immediately', spawnEvents.filter((e) => e.type === 'spawn').length === 2);
+  check('forced spawn leaves counter to the caller', b.wavesSpawned === 0);
+  // no-victory battles never emit win, even with all waves down
+  b.wavesSpawned = b.def.waves.length;
+  for (const u of [...b.units.values()]) if (u.side === 'enemy') b.units.delete(u.uid);
+  const evs = [];
+  check('noVictory battle refuses to end in win', !b.checkEnd(evs) && evs.length === 0, JSON.stringify(evs));
+  const doomEvents = b.doom();
+  check('doom stuns every faithful soul', doomEvents.filter((e) => e.type === 'doomStun').length === 1);
+  check('doom shatters the obelisk', b.obeliskHp === 0 && doomEvents.some((e) => e.type === 'obeliskShatter'));
+  check('doom ends in loss', b.over && b.result === 'lose' && doomEvents.at(-1).type === 'lose');
+  check('preset unit is stunned', b.units.get(preset.uid).stunned);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

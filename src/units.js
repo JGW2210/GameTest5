@@ -251,6 +251,77 @@ function houndFigure() {
   return g;
 }
 
+// The Grand Inquisitor: not a knight but the church made flesh — a towering
+// robed figure crowned in a blazing spiked halo, one searing eye in the hood.
+function inquisitorFigure() {
+  const g = new THREE.Group();
+  const ivory = mat(0xefe8d4, { roughness: 0.75 });
+  const gold = new THREE.MeshStandardMaterial({
+    color: 0xd4a017,
+    roughness: 0.35,
+    metalness: 0.7,
+    flatShading: true,
+    emissive: 0x8a6510,
+    emissiveIntensity: 0.35,
+  });
+
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.95, 3.1, 9), ivory);
+  robe.position.y = 1.55;
+  robe.castShadow = true;
+  g.add(robe);
+  const trim = new THREE.Mesh(new THREE.TorusGeometry(0.82, 0.07, 6, 18), gold);
+  trim.rotation.x = Math.PI / 2;
+  trim.position.y = 0.35;
+  g.add(trim);
+
+  // red cross on the breast of the robe
+  const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.7, 0.04), mat(0xa8302a));
+  crossV.position.set(0, 2.1, 0.47);
+  crossV.rotation.x = -0.28;
+  g.add(crossV);
+  const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.13, 0.04), mat(0xa8302a));
+  crossH.position.set(0, 2.26, 0.42);
+  crossH.rotation.x = -0.28;
+  g.add(crossH);
+
+  // pauldrons wide as a doorway
+  for (const dx of [-0.72, 0.72]) {
+    const p = new THREE.Mesh(new THREE.SphereGeometry(0.3, 7, 5, 0, Math.PI * 2, 0, Math.PI / 2), gold);
+    p.position.set(dx, 2.62, 0);
+    g.add(p);
+  }
+
+  // a hood of shadow with a single searing eye
+  const hood = new THREE.Mesh(new THREE.ConeGeometry(0.42, 0.85, 7), mat(0x241d16, { roughness: 0.95 }));
+  hood.position.y = 3.2;
+  g.add(hood);
+  const eye = hoodEye(0xffd970, 0.11, true);
+  eye.position.set(0, 3.05, 0.24);
+  eye.userData.baseY = 3.05;
+  g.add(eye);
+
+  // the spiked halo — a wheel of judgement behind the hood
+  const halo = new THREE.Group();
+  const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.62, 0.05, 6, 22), gold);
+  halo.add(wheel);
+  for (let i = 0; i < 8; i++) {
+    const a = (i * Math.PI) / 4;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.42, 4), gold);
+    spike.position.set(Math.cos(a) * 0.82, Math.sin(a) * 0.82, 0);
+    spike.rotation.z = a - Math.PI / 2;
+    halo.add(spike);
+  }
+  halo.position.set(0, 3.35, -0.28);
+  halo.userData.spin = true;
+  g.add(halo);
+
+  // golden censer-light at his feet
+  const light = new THREE.PointLight(0xffd970, 18, 7, 2);
+  light.position.y = 2.4;
+  g.add(light);
+  return g;
+}
+
 function makeEnemyUnit(unit) {
   switch (unit.key) {
     case 'hound':
@@ -261,6 +332,8 @@ function makeEnemyUnit(unit) {
       return knight(1.05, { shield: true });
     case 'boss':
       return knight(1.55, { boss: true });
+    case 'inquisitor':
+      return inquisitorFigure();
     default:
       return knight(1);
   }
@@ -300,21 +373,27 @@ export function createUnitGroup(unit) {
   g.traverse((o) => {
     if (o.isMesh) o.castShadow = true;
   });
-  if (unit.side === 'enemy') g.rotation.y = Math.PI; // face the obelisk
+  // Combat facing: crusaders look toward the obelisk, the cult toward the
+  // gate. Kept in userData so animations (telekinetic spins, the sermon's
+  // about-face) can always land a unit back on its true facing.
+  const baseFacing = unit.side === 'enemy' ? Math.PI : 0;
+  g.rotation.y = baseFacing;
 
   const hpBar = makeHpBar();
   hpBar.position.y =
     unit.side === 'player'
       ? HP_BAR_Y[unit.type] || 1.5
-      : unit.boss
-        ? 2.9
-        : unit.key === 'hound'
-          ? 1.1
-          : 1.8;
+      : unit.key === 'inquisitor'
+        ? 4.1
+        : unit.boss
+          ? 2.9
+          : unit.key === 'hound'
+            ? 1.1
+            : 1.8;
   drawHpBar(hpBar, unit.hp, unit.maxHp);
   g.add(hpBar);
 
-  g.userData = { isUnit: true, uid: unit.uid, side: unit.side, hpBar };
+  g.userData = { isUnit: true, uid: unit.uid, side: unit.side, hpBar, baseFacing };
   return g;
 }
 
@@ -431,6 +510,9 @@ export function updateUnitGroup(g, dt) {
       const f = o.userData.flicker;
       f.t += dt;
       o.material.emissiveIntensity = f.base + Math.sin(f.t * 11) * 0.5 + Math.sin(f.t * 23.7) * 0.35;
+    }
+    if (o.userData && o.userData.spin) {
+      o.rotation.z += dt * 0.6;
     }
   });
 }

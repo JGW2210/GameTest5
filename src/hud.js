@@ -25,9 +25,13 @@ export class Hud {
       dialogueText: $('dialogue-text'),
       overlay: $('overlay'),
       hint: $('hint'),
+      dream: $('dream'),
+      dreamText: $('dream-text'),
+      flash: $('flash'),
     };
     this.onEndTurn = null;
     this._dialogueResolve = null;
+    this._dreamResolve = null;
     this._toastTimer = null;
     this._bannerTimer = null;
 
@@ -35,12 +39,25 @@ export class Hud {
       if (!this.el.endTurn.disabled && this.onEndTurn) this.onEndTurn();
     });
     this.el.dialogue.addEventListener('click', () => this.advanceDialogue());
+    this.el.dream.addEventListener('click', () => this.advanceDream());
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space' && this._dialogueResolve) {
+      if (e.code === 'Space' && (this._dialogueResolve || this._dreamResolve)) {
         e.preventDefault();
-        this.advanceDialogue();
+        if (this._dreamResolve) this.advanceDream();
+        else this.advanceDialogue();
       }
     });
+  }
+
+  // Hide the battle chrome (turn counter, flames, end-turn) while in the hub.
+  setBattleUi(on) {
+    document.body.classList.toggle('no-battle-ui', !on);
+  }
+
+  // A blinding burst of holy light (the Inquisitor's Judgement).
+  flash() {
+    this.el.flash.classList.add('show');
+    setTimeout(() => this.el.flash.classList.remove('show'), 900);
   }
 
   setTurn(turn) {
@@ -150,7 +167,33 @@ export class Hud {
     this.el.dialogue.classList.toggle('focus', focused);
   }
 
-  showScreen(kind, onAction) {
+  // The dream: a slow fade into the only room they cannot burn. Kinaeto's
+  // words drift up one line at a time; click (or Space) advances.
+  dream(lines) {
+    this._dreamQueue = lines.slice();
+    this.el.dream.classList.add('show');
+    return new Promise((resolve) => {
+      this._dreamResolve = resolve;
+      this.el.dreamText.textContent = this._dreamQueue.shift();
+    });
+  }
+
+  advanceDream() {
+    if (!this._dreamResolve) return;
+    if (this._dreamQueue.length > 0) {
+      this.el.dreamText.textContent = this._dreamQueue.shift();
+    } else {
+      this.el.dream.classList.remove('show');
+      const r = this._dreamResolve;
+      this._dreamResolve = null;
+      // let the fade-out finish before the world returns
+      setTimeout(r, 700);
+    }
+  }
+
+  // Full screens. onAction receives the clicked button's key.
+  // opts.firstRun — the menu offers the tutorial only until it has been seen.
+  showScreen(kind, onAction, opts = {}) {
     const o = this.el.overlay;
     if (!kind) {
       o.classList.remove('show');
@@ -161,43 +204,53 @@ export class Hud {
       menu: {
         title: 'KINAETO',
         sub: 'Beneath the Flame — a roguelike deckbuilder of telekinetic faith',
-        body: 'The church marches on your cave. Three paths lead to the obelisk that ties Kinaeto — hand, eye, and patience — to this plane. Draw your followers. Hold the gate.',
-        btn: 'Begin the Vigil',
+        body: opts.firstRun
+          ? 'In the ceremony grounds beneath the mountain, Kinaeto — hand, eye, and patience — gathers his faithful for a sermon. The church is closer than anyone knows.'
+          : 'The first sanctuary is ash and the obelisk is gravel. In a deeper cave, the cult begins again.',
+        btns: opts.firstRun
+          ? [{ key: 'tutorial', label: 'Begin the First Night' }]
+          : [
+              { key: 'hub', label: 'Enter the Sanctum' },
+              { key: 'tutorial', label: 'Relive the First Night' },
+            ],
         extra: `<div class="rules">
           <p><b>Impetus</b> 🔥 — flame energy that calls troops. A fixed measure each turn; drag any card into the flames to burn it for +1.</p>
           <p><b>Ranks</b> — tiles hold up to 3 followers a side; allies never block allies. On contested tiles <i>everyone</i> strikes each turn, and victors surge onward the same turn.</p>
           <p><b>Kinaetic focus</b> — Kinaeto reaches through you once per turn: click a unit to Move or Push it, or cast a Rite card (Crush, Trip, Beckoning).</p>
           <p><b>✋ Open Palm</b> — holds its tile. <b>✊ Closed Fist</b> — advances; attacks foes on its tile. <b>🖐 Hand Sign</b> — casts down its path; can never be moved.</p>
-          <p><b>Cards</b> — 5 to open, 3 each turn. Every follower acts the moment it lands.</p>
           <p><b>The Gaze</b> — each turn the Eye watches one path: cult units there fight harder, and rites cast on that path preserve your focus. The next path is foretold.</p>
           <p><b>Intents</b> — every crusader shows what it will do next: advance, strike, volley, siege, or worse.</p>
           <p><b>← →</b> (or swipe) — take the flanks. The faithful have left you messages on the walls.</p>
-          <p>Survive 4 waves. The 4th brings their Saint-Commander up the centre path.</p>
         </div>`,
       },
       victory: {
         title: 'THE GATE HOLDS',
         sub: 'Wave after wave broke on your faithful. The obelisk still sings.',
-        body: 'This prototype ends here — the crusade will return with more battles, new followers, and darker paths.',
-        btn: 'Stand Vigil Again',
+        body: 'The crusade will lick its wounds and come back meaner. Tend to the flock while the roads are quiet.',
+        btns: [{ key: 'hub', label: 'Return to the Sanctum' }],
       },
       defeat: {
         title: 'THE OBELISK FALLS SILENT',
         sub: 'Kinaeto’s grip on this plane thins to a thread.',
-        body: 'Threads can be rewoven. Begin again, shepherd.',
-        btn: 'Begin Again',
+        body: 'Threads can be rewoven. Regather the faithful and try the gate again.',
+        btns: [{ key: 'hub', label: 'Return to the Sanctum' }],
       },
     }[kind];
 
+    const btnsHtml = content.btns
+      .map((b, i) => `<button class="overlay-btn${i > 0 ? ' secondary' : ''}" data-key="${b.key}">${b.label}</button>`)
+      .join('');
     o.innerHTML = `
       <div class="panel">
         <h1>${content.title}</h1>
         <h2>${content.sub}</h2>
         <p>${content.body}</p>
         ${content.extra || ''}
-        <button id="overlay-btn">${content.btn}</button>
+        <div class="overlay-btns">${btnsHtml}</div>
       </div>`;
     o.classList.add('show');
-    $('overlay-btn').addEventListener('click', () => onAction && onAction());
+    o.querySelectorAll('.overlay-btn').forEach((btn) => {
+      btn.addEventListener('click', () => onAction && onAction(btn.dataset.key));
+    });
   }
 }
