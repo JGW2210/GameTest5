@@ -134,8 +134,45 @@ function addUnitView(unit, atEntrance = false) {
     path: unit.path,
     row: unit.row,
     boss: !!unit.boss,
+    moveGen: 0,
   });
   return group;
+}
+
+// When opposing units share a tile they square off: each shifts toward its
+// own side of the tile instead of clipping through the other.
+function isContested(v) {
+  for (const o of unitViews.values()) {
+    if (o !== v && o.path === v.path && o.row === v.row && o.group.userData.side !== v.group.userData.side) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function viewTargetPos(v) {
+  const p = board.unitPosition(v.path, v.row);
+  if (isContested(v)) p.z += v.group.userData.side === 'player' ? -0.58 : 0.58;
+  return p;
+}
+
+// Ease every unit whose resting spot changed (a foe arrived or fell) into its
+// stance. Skipped for any unit that starts a newer animation mid-settle.
+function settleUnits() {
+  for (const v of unitViews.values()) {
+    const target = viewTargetPos(v);
+    if (v.group.position.distanceToSquared(target) < 0.004) continue;
+    const from = v.group.position.clone();
+    const gen = ++v.moveGen;
+    tweens.run({
+      duration: 0.3,
+      ease: Ease.inOutCubic,
+      onUpdate: (e) => {
+        if (v.moveGen !== gen) return;
+        v.group.position.lerpVectors(from, target, e);
+      },
+    });
+  }
 }
 
 function setViewHp(uid, hp) {
@@ -149,9 +186,10 @@ async function animateMove(uid, to, tk = false) {
   const v = unitViews.get(uid);
   if (!v) return;
   const from = v.group.position.clone();
-  const dest = board.unitPosition(to.path, to.row);
   v.path = to.path;
   v.row = to.row;
+  const dest = viewTargetPos(v);
+  v.moveGen++;
   if (tk) {
     // Telekinetic arc: lifted by an unseen hand, wreathed in violet.
     const glow = new THREE.PointLight(COLORS.kinaetic, 30, 6, 2);
@@ -237,6 +275,7 @@ async function animateDeath(uid) {
   const v = unitViews.get(uid);
   if (!v) return;
   unitViews.delete(uid);
+  v.moveGen++;
   await tweens.run({
     duration: 0.45,
     ease: Ease.inOutCubic,
@@ -283,7 +322,8 @@ async function processEvents(events) {
       case 'place': {
         const unit = ev.unit;
         const group = addUnitView(unit);
-        const dest = board.unitPosition(unit.path, unit.row);
+        const dest = viewTargetPos(unitViews.get(unit.uid));
+        group.position.copy(dest);
         await tweens.run({
           duration: 0.45,
           ease: Ease.outBack,
@@ -292,6 +332,7 @@ async function processEvents(events) {
             group.scale.setScalar(Math.max(0.01, e));
           },
         });
+        settleUnits();
         break;
       }
       case 'warn': {
@@ -310,7 +351,7 @@ async function processEvents(events) {
         board.clearWarnings();
         const unit = ev.unit;
         const group = addUnitView(unit, true);
-        const dest = board.unitPosition(unit.path, unit.row);
+        const dest = viewTargetPos(unitViews.get(unit.uid));
         const from = group.position.clone();
         if (ev.isBoss) {
           hud.banner('⚜ SAINT-COMMANDER AUREL ⚜', 'boss');
@@ -326,10 +367,12 @@ async function processEvents(events) {
         });
         if (ev.isBoss) await kinaetoSpeaks([DIALOGUE.bossSpawn]);
         hud.setWave(`Wave ${battle.wavesSpawned} / ${battle.def.waves.length}`);
+        settleUnits();
         break;
       }
       case 'move':
         await animateMove(ev.uid, ev.to, ev.tk);
+        settleUnits();
         break;
       case 'attack':
         await animateAttack(ev.uid, ev.targetUid, ev.dmg, ev.targetHp);
@@ -339,6 +382,7 @@ async function processEvents(events) {
         break;
       case 'die':
         await animateDeath(ev.uid);
+        settleUnits();
         break;
       case 'obeliskHit': {
         world.addShake(0.35);
@@ -452,7 +496,7 @@ window.addEventListener('pointermove', (e) => {
   cardHand.setPointerNDC(pointer.x, pointer.y);
   // Vertical glance: cursor near the hand peeks at the path mouths and their
   // warning sigils; cursor near the top frames the full obelisk.
-  if (mode === 'idle') {
+  if (mode === 'idle' && world.sideTarget === 0) {
     if (pointer.y < -0.4) world.glanceTarget = -Math.min(1, (-pointer.y - 0.4) / 0.35);
     else if (pointer.y > 0.45) world.glanceTarget = Math.min(1, (pointer.y - 0.45) / 0.35);
     else world.glanceTarget = 0;
@@ -575,8 +619,46 @@ window.addEventListener('contextmenu', (e) => {
   e.preventDefault();
   cancelAction();
 });
+
+// Arrow keys toggle the fixed side views: stand at one wall, face the other.
+// The same key again (or Escape) returns to the tactical view.
+function toggleSideView(dir) {
+  if (world.sideTarget === dir) world.sideTarget = 0;
+  else if (world.sideTarget === 0) world.sideTarget = dir;
+  else world.sideTarget = 0; // from the opposite side, come back to centre first
+  world.glanceTarget = 0;
+}
+
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') cancelAction();
+  if (e.key === 'Escape') {
+    world.sideTarget = 0;
+    cancelAction();
+  } else if (e.key === 'ArrowLeft') {
+    toggleSideView(-1);
+  } else if (e.key === 'ArrowRight') {
+    toggleSideView(1);
+  }
+});
+
+// Touch: a horizontal swipe across the centre of the view toggles side views.
+let swipeStart = null;
+window.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch' || mode !== 'idle') return;
+  const nx = e.clientX / window.innerWidth;
+  const ny = e.clientY / window.innerHeight;
+  if (nx > 0.15 && nx < 0.85 && ny > 0.1 && ny < 0.72) {
+    setPointer(e);
+    if (!pickCard()) swipeStart = { x: e.clientX, y: e.clientY };
+  }
+});
+window.addEventListener('pointerup', (e) => {
+  if (!swipeStart || e.pointerType !== 'touch') return;
+  const dx = e.clientX - swipeStart.x;
+  const dy = e.clientY - swipeStart.y;
+  swipeStart = null;
+  if (Math.abs(dx) >= 70 && Math.abs(dy) <= Math.abs(dx) * 0.6 && mode === 'idle') {
+    toggleSideView(dx < 0 ? -1 : 1);
+  }
 });
 
 hud.onTkSelect = (power) => {
@@ -623,6 +705,7 @@ window.__game = {
   world,
   board,
   cardHand,
+  _test: { addUnitView, settleUnits, viewTargetPos, isContested },
 };
 
 const clock = new THREE.Clock();

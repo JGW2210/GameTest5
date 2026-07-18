@@ -34,6 +34,17 @@ export const CAMERA_POSES = {
   bottom: { pos: [0, 15, 17.5], look: [0, -0.8, 5.2] },
   top: { pos: [0, 12.2, 13.2], look: [0, 4.8, -9.8] },
   kinaeto: { pos: [0, 10.4, -1.2], look: [0, 8.9, -13.6] },
+  // Fixed side views (arrow keys / swipe): stand at one wall, face the other.
+  sideLeft: { pos: [-10.5, 6.2, -1.5], look: [13.5, 3.4, -2.5] },
+  sideRight: { pos: [10.5, 6.2, -1.5], look: [-13.5, 3.4, -2.5] },
+};
+
+export const WALLS = {
+  x: 13.8, // slab centre distance from the middle path
+  y: 3.6,
+  z: -3,
+  left: { text: 'KINAETO IS KIND', glyphs: ['palm', 'palm'] },
+  right: { text: 'THE DIVINE HAND CARRIES ALL', glyphs: ['fist', 'sign'] },
 };
 
 export const RULES = {

@@ -10,7 +10,7 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
-html, body { height: 100%; overflow: hidden; background: #0d0708; }
+html, body { height: 100%; overflow: hidden; background: #0d0708; overscroll-behavior: none; }
 
 body {
   font-family: Georgia, 'Times New Roman', serif;
@@ -19,7 +19,7 @@ body {
   -webkit-user-select: none;
 }
 
-#game { position: fixed; inset: 0; display: block; }
+#game { position: fixed; inset: 0; display: block; touch-action: none; }
 
 /* ---------- top bar ---------- */
 

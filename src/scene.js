@@ -2,7 +2,8 @@
 // platform, torches, ember particles, and the portal ring Kinaeto uses.
 
 import * as THREE from 'three';
-import { CAMERA, CAMERA_POSES, COLORS, OBELISK_POS, PORTAL_POS, PATH_X, rowZ, ROWS } from './config.js';
+import { CAMERA, CAMERA_POSES, COLORS, OBELISK_POS, PORTAL_POS, PATH_X, rowZ, ROWS, WALLS } from './config.js';
+import { drawGlyph } from './cards3d.js';
 
 function jitterGeometry(geo, amount) {
   const pos = geo.attributes.position;
@@ -49,6 +50,10 @@ export class World {
     this.glanceTarget = 0;
     this.focus = 0;
     this.focusTarget = 0;
+    // Fixed side views: -1 = stand at the left wall (right wall in view),
+    // +1 = stand at the right wall. Toggled by arrow keys / swipes.
+    this.side = 0;
+    this.sideTarget = 0;
     this.rigEnabled = true;
     this._pose = { pos: new THREE.Vector3(), look: new THREE.Vector3() };
     this.torchFlames = [];
@@ -56,6 +61,7 @@ export class World {
 
     this.buildLights();
     this.buildCave();
+    this.buildWalls();
     this.buildObelisk();
     this.buildPortal();
     this.buildEmbers();
@@ -125,14 +131,14 @@ export class World {
       this.scene.add(cone);
     }
 
-    // Boulders framing the paths
+    // Boulders framing the paths (kept in front of the carved walls)
     for (let i = 0; i < 18; i++) {
       const side = i % 2 === 0 ? -1 : 1;
       const rock = new THREE.Mesh(
         new THREE.DodecahedronGeometry(0.8 + Math.random() * 1.6, 0),
         rockMat(COLORS.rockDark)
       );
-      rock.position.set(side * (9.5 + Math.random() * 5), 0.4, -12 + Math.random() * 24);
+      rock.position.set(side * (9.2 + Math.random() * 2.4), 0.4, -12 + Math.random() * 24);
       rock.rotation.set(Math.random() * 3, Math.random() * 3, Math.random() * 3);
       rock.castShadow = true;
       this.scene.add(rock);
@@ -181,6 +187,82 @@ export class World {
     }
     g.position.set(x, 0, z);
     this.scene.add(g);
+  }
+
+  // Carved cult slogans on the cave walls, lit up when a side view faces them.
+  carvingTexture(text, glyphs) {
+    const c = document.createElement('canvas');
+    c.width = 1024;
+    c.height = 384;
+    const ctx = c.getContext('2d');
+
+    // stone base with speckle
+    ctx.fillStyle = '#2c2025';
+    ctx.fillRect(0, 0, 1024, 384);
+    for (let i = 0; i < 700; i++) {
+      ctx.fillStyle = Math.random() < 0.5 ? 'rgba(0,0,0,0.12)' : 'rgba(255,235,255,0.05)';
+      ctx.fillRect(Math.random() * 1024, Math.random() * 384, 2 + Math.random() * 5, 2 + Math.random() * 4);
+    }
+
+    // chiselled text (highlight above, dark groove below)
+    const lines = text.length > 18 ? [text.slice(0, text.lastIndexOf(' ', 18)), text.slice(text.lastIndexOf(' ', 18) + 1)] : [text];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '10px';
+    const size = lines.length > 1 ? 86 : 96;
+    ctx.font = `bold ${size}px Georgia, serif`;
+    lines.forEach((line, i) => {
+      const y = 148 + i * (size + 14) - (lines.length - 1) * 40;
+      ctx.fillStyle = 'rgba(215,190,235,0.28)';
+      ctx.fillText(line, 512, y - 3);
+      ctx.fillStyle = '#140d16';
+      ctx.fillText(line, 512, y);
+    });
+
+    // hand carvings flanking the text
+    const gy = lines.length > 1 ? 320 : 280;
+    glyphs.forEach((type, i) => {
+      const gx = 512 + (i === 0 ? -330 : 330);
+      drawGlyph(ctx, type, gx + 2, gy - 2, 52, 'rgba(215,190,235,0.25)');
+      drawGlyph(ctx, type, gx, gy, 52, '#140d16');
+    });
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    return tex;
+  }
+
+  buildWalls() {
+    this.walls = {};
+    for (const side of ['left', 'right']) {
+      const sign = side === 'left' ? -1 : 1;
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(1.4, 8.4, 19.5), rockMat(0x342529));
+      slab.position.set(sign * WALLS.x, WALLS.y, WALLS.z);
+      slab.rotation.y = sign * 0.06;
+      this.scene.add(slab);
+
+      const tex = this.carvingTexture(WALLS[side].text, WALLS[side].glyphs);
+      const mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        roughness: 0.9,
+        emissive: COLORS.rune,
+        emissiveMap: tex,
+        emissiveIntensity: 0.08,
+      });
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(16.8, 6.3), mat);
+      face.position.set(sign * (WALLS.x - 0.78), WALLS.y, WALLS.z);
+      face.rotation.y = sign * (-Math.PI / 2 + 0.06);
+      this.scene.add(face);
+
+      const light = new THREE.SpotLight(0xd9c2ff, 0, 45, Math.PI / 4.5, 0.5, 1.4);
+      light.position.set(sign * 5.5, 10.5, WALLS.z);
+      light.target.position.set(sign * WALLS.x, WALLS.y, WALLS.z);
+      this.scene.add(light);
+      this.scene.add(light.target);
+
+      this.walls[side] = { mat, light, face };
+    }
   }
 
   buildObelisk() {
@@ -338,9 +420,10 @@ export class World {
     }
     pos.needsUpdate = true;
 
-    // Camera rig: glance blend + Kinaeto focus blend + breathing + shake.
+    // Camera rig: glance blend + side view blend + Kinaeto focus + breathing.
     if (this.rigEnabled) {
       this.glance += (this.glanceTarget - this.glance) * Math.min(dt * 3.2, 1);
+      this.side += (this.sideTarget - this.side) * Math.min(dt * 2.6, 1);
       this.focus += (this.focusTarget - this.focus) * Math.min(dt * 2.4, 1);
     }
     const P = CAMERA_POSES;
@@ -351,9 +434,22 @@ export class World {
     pose.look.fromArray(P.default.look);
     pose.pos.lerp(new THREE.Vector3().fromArray(glancePose.pos), g);
     pose.look.lerp(new THREE.Vector3().fromArray(glancePose.look), g);
+    const sidePose = this.side < 0 ? P.sideLeft : P.sideRight;
+    const sd = Math.abs(this.side);
+    const sdSmooth = sd * sd * (3 - 2 * sd);
+    pose.pos.lerp(new THREE.Vector3().fromArray(sidePose.pos), sdSmooth);
+    pose.look.lerp(new THREE.Vector3().fromArray(sidePose.look), sdSmooth);
     const f = this.focus * this.focus * (3 - 2 * this.focus); // smoothstep
     pose.pos.lerp(new THREE.Vector3().fromArray(P.kinaeto.pos), f);
     pose.look.lerp(new THREE.Vector3().fromArray(P.kinaeto.look), f);
+
+    // The wall being faced lights up; its carvings glow.
+    const litRight = Math.max(0, -this.side);
+    const litLeft = Math.max(0, this.side);
+    this.walls.right.light.intensity = litRight * 60;
+    this.walls.left.light.intensity = litLeft * 60;
+    this.walls.right.mat.emissiveIntensity = 0.08 + litRight * 1.05;
+    this.walls.left.mat.emissiveIntensity = 0.08 + litLeft * 1.05;
 
     this.shake = Math.max(this.shake - dt * 1.8, 0);
     const s = this.shake;

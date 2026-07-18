@@ -162,6 +162,7 @@ export class Hud {
           <p><b>✊ Closed Fist</b> — advances; attacks foes on its tile.</p>
           <p><b>🖐 Hand Sign</b> — casts 2–5 tiles down its path; can never be moved.</p>
           <p><b>Telekinesis</b> — once per turn: Move, Push, Crush, or Trip any lawful target — even the enemy's.</p>
+          <p><b>← →</b> (or swipe) — look to the cave walls. The faithful have left you messages.</p>
           <p>Survive 4 waves. The 4th brings their Saint-Commander up the centre path.</p>
         </div>`,
       },

@@ -68,6 +68,10 @@ his whole path every second turn.
   mouths (and incoming-wave sigils) above your hand; move it to the top to frame the
   full obelisk. During dialogue the camera pans up to Kinaeto himself
 - **Click or Space** advances Kinaeto's dialogue (it waits for you)
+- **← / → arrow keys** (or a horizontal swipe across the centre of the view on touch
+  screens) toggle fixed side views: the camera stands at one cave wall facing the other,
+  lighting up the cult's carved slogans. The same key — or Esc — returns to centre
+- Opposing units that meet on a tile square off on its edges instead of overlapping
 
 ## Deployment
 

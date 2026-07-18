@@ -27,7 +27,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawGlyph(ctx, type, cx, cy, s, color) {
+export function drawGlyph(ctx, type, cx, cy, s, color) {
   ctx.save();
   ctx.translate(cx, cy);
   ctx.scale(s, s);
