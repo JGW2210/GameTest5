@@ -503,17 +503,26 @@ window.addEventListener('pointermove', (e) => {
   // Vertical glance: cursor near the hand peeks at the path mouths and their
   // warning sigils; cursor near the top frames the full obelisk.
   if (mode === 'idle' && world.sideTarget === 0) {
-    if (pointer.y < -0.4) world.glanceTarget = -Math.min(1, (-pointer.y - 0.4) / 0.35);
+    // The downward glance bottoms out just ABOVE the card fan (~ -0.58), so
+    // by the time the cursor reaches the cards the view is already settled
+    // and a lifted card only covers what it is actually touching.
+    if (pointer.y < -0.3) world.glanceTarget = -Math.min(1, (-pointer.y - 0.3) / 0.2);
     else if (pointer.y > 0.45) world.glanceTarget = Math.min(1, (pointer.y - 0.45) / 0.35);
     else world.glanceTarget = 0;
   } else {
     world.glanceTarget = 0;
   }
   if (mode === 'idle') {
-    const slot = cardHand.slotIndexAt();
-    const card = slot >= 0 ? cardHand.meshes[slot] : pickCard();
-    cardHand.setHover(card ? card.userData.index : -1);
-    if (card) {
+    // Hover lives near the hand: pick by fan slot, and let the lifted card
+    // keep hover only while the cursor stays in the lower band — wandering
+    // up to the board always drops it, so it never blocks the view.
+    let hoverIdx = cardHand.slotIndexAt();
+    if (hoverIdx === -1 && pointer.y < -0.35 && cardHand.hoverIndex >= 0) {
+      const card = pickCard();
+      if (card && card.userData.index === cardHand.hoverIndex) hoverIdx = card.userData.index;
+    }
+    cardHand.setHover(hoverIdx);
+    if (hoverIdx >= 0) {
       document.body.style.cursor = 'grab';
     } else {
       const unit = pickUnit();
@@ -559,7 +568,11 @@ window.addEventListener('pointerdown', (e) => {
 
   if (mode === 'idle') {
     const slot = cardHand.slotIndexAt();
-    const card = slot >= 0 ? cardHand.meshes[slot] : pickCard();
+    let card = slot >= 0 ? cardHand.meshes[slot] : null;
+    if (!card && pointer.y < -0.35 && cardHand.hoverIndex >= 0) {
+      const picked = pickCard();
+      if (picked && picked.userData.index === cardHand.hoverIndex) card = picked;
+    }
     if (card) {
       const def = CARDS[card.userData.key];
       if (def.type === 'tk') {
