@@ -50,6 +50,20 @@ export class Battle {
     this.wavesSpawned = 0;
     this.over = false;
     this.result = null;
+    // The Gaze of Kinaeto: one path is watched each turn (+1 atk / +1 armor
+    // for cult units there; rites cast on it preserve Kinaetic focus). The
+    // next turn's gaze is telegraphed a turn ahead.
+    this.gazePath = Math.floor(Math.random() * PATHS);
+    this.nextGazePath = Math.floor(Math.random() * PATHS);
+  }
+
+  // Effective stats under the gaze.
+  effAtk(u) {
+    return u.atk + (u.side === 'player' && u.path === this.gazePath ? 1 : 0);
+  }
+
+  effArmor(u) {
+    return (u.armor || 0) + (u.side === 'player' && u.path === this.gazePath ? 1 : 0);
   }
 
   // ---- setup -------------------------------------------------------------
@@ -57,6 +71,7 @@ export class Battle {
   start() {
     const events = [];
     this.drawCards(RULES.drawInitial);
+    events.push({ type: 'gaze', path: this.gazePath, next: this.nextGazePath });
     events.push(this.turnStartEvent());
     const first = this.def.waves[0];
     if (first && first.warnAtEnd === 0) events.push(this.makeWarn(first));
@@ -71,7 +86,37 @@ export class Battle {
       impetusMax: RULES.impetusPerTurn,
       kinaetic: this.kinaeticAvailable(),
       hand: this.hand.slice(),
+      intents: this.computeIntents(),
     };
+  }
+
+  // Best-effort prediction of what each enemy will do at the end of this
+  // player turn, mirroring actEnemyUnits' decision order.
+  computeIntents() {
+    const intents = [];
+    for (const u of this.aliveEnemies()) {
+      let intent;
+      if (u.stunned) intent = 'dazed';
+      else if (u.boss && (u.actCount + 1) % 2 === 0) intent = 'ability';
+      else if (this.unitAt(u.path, u.row, 'player')) intent = 'strike';
+      else if (u.kind === 'ranged' && this.rangedTarget(u)) intent = 'volley';
+      else if (u.row === OBELISK_ROW) intent = 'siege';
+      else if (u.slow && (u.actCount + 1) % 2 === 1) intent = 'wait';
+      else intent = 'advance';
+      u.intent = intent;
+      intents.push({ uid: u.uid, intent });
+    }
+    return intents;
+  }
+
+  rangedTarget(u) {
+    let best = null;
+    for (const p of [...this.units.values()]) {
+      if (p.side !== 'player' || p.path !== u.path) continue;
+      const d = Math.abs(p.row - u.row);
+      if (d <= u.range && (!best || d < Math.abs(best.row - u.row))) best = p;
+    }
+    return best;
   }
 
   kinaeticAvailable() {
@@ -148,13 +193,47 @@ export class Battle {
       atk: def.atk,
       range: def.range || 0,
       fast: !!def.fast,
+      rage: !!def.rage,
+      armor: def.armor || 0,
+      sweep: !!def.sweep,
+      onDeath: def.onDeath || null,
+      ward: 0,
       path,
       row,
       stunned: false,
       actCount: 0,
     };
     this.units.set(unit.uid, unit);
-    return { ok: true, events: [{ type: 'place', unit: this.snapshot(unit) }] };
+    const events = [{ type: 'place', unit: this.snapshot(unit) }];
+    this.arrivalCry(events, unit, def);
+    this.checkEnd(events);
+    return { ok: true, events };
+  }
+
+  // Every follower does something the moment it lands.
+  arrivalCry(events, unit, def) {
+    if (def.cry === 'bolt') {
+      let best = null;
+      for (const e of this.aliveEnemies()) {
+        if (e.path !== unit.path) continue;
+        const d = Math.abs(e.row - unit.row);
+        if (!best || d < Math.abs(best.row - unit.row)) best = e;
+      }
+      if (best) this.dealDamage(events, unit, best, 1, 'shoot', { noRage: true });
+    } else if (def.cry === 'ward') {
+      unit.ward = 2;
+      events.push({ type: 'ward', uid: unit.uid, amount: 2 });
+    } else if (def.cry === 'advance') {
+      const next = unit.row + 1;
+      if (next < ROWS && !this.unitAt(unit.path, next, 'player')) {
+        const from = { path: unit.path, row: unit.row };
+        unit.row = next;
+        events.push({ type: 'move', uid: unit.uid, from, to: { path: unit.path, row: unit.row } });
+      }
+    } else if (def.cry === 'draw') {
+      this.drawCards(1);
+      events.push({ type: 'draw', hand: this.hand.slice() });
+    }
   }
 
   // ---- telekinesis: click a unit, choose a tile --------------------------
@@ -236,8 +315,12 @@ export class Battle {
     const key = this.hand.splice(handIndex, 1)[0];
     const def = CARDS[key];
     this.discard.push(key);
-    this.kinaeticUsed++;
     const events = [];
+    // Rites cast under the Gaze preserve your Kinaetic focus.
+    const target = this.units.get(targetUid);
+    const underGaze = def.power !== 'beckon' && target && target.path === this.gazePath;
+    if (underGaze) events.push({ type: 'gazeFavor', uid: targetUid });
+    else this.kinaeticUsed++;
 
     if (def.power === 'crush') {
       const u = this.units.get(targetUid);
@@ -273,6 +356,11 @@ export class Battle {
     this.emitDueWarn(events);
     if (this.checkEnd(events)) return events;
 
+    // the Eye turns to its foretold path and picks its next
+    this.gazePath = this.nextGazePath;
+    this.nextGazePath = Math.floor(Math.random() * PATHS);
+    events.push({ type: 'gaze', path: this.gazePath, next: this.nextGazePath });
+
     // next turn — the hand carries over; draw 3 more up to the cap
     this.turn++;
     this.impetus = RULES.impetusPerTurn;
@@ -282,18 +370,42 @@ export class Battle {
     return events;
   }
 
-  dealDamage(events, attacker, target, dmg, kind) {
-    target.hp -= dmg;
+  // Damage pipeline: ward absorbs first, then armor shaves the rest; RAGE
+  // attackers grow with every strike; ember units burn their killer.
+  dealDamage(events, attacker, target, dmg, kind, opts = {}) {
+    let amount = dmg;
+    if (!opts.pierceArmor) amount = Math.max(amount - this.effArmor(target), 0);
+    let absorbed = 0;
+    if (target.ward > 0 && amount > 0) {
+      absorbed = Math.min(target.ward, amount);
+      target.ward -= absorbed;
+      amount -= absorbed;
+    }
+    target.hp -= amount;
     events.push({
       type: kind,
       uid: attacker.uid,
       targetUid: target.uid,
-      dmg,
+      dmg: amount,
+      absorbed,
       targetHp: target.hp,
     });
+    if (attacker.rage && !opts.noRage) {
+      attacker.atk += 1;
+      events.push({ type: 'rage', uid: attacker.uid, atk: attacker.atk });
+    }
     if (target.hp <= 0) {
       this.units.delete(target.uid);
       events.push({ type: 'die', uid: target.uid });
+      if (target.onDeath === 'ember' && this.units.has(attacker.uid)) {
+        // the slain zealot's flame leaps to its killer
+        attacker.hp -= 1;
+        events.push({ type: 'emberBurst', uid: target.uid, targetUid: attacker.uid, dmg: 1, targetHp: attacker.hp });
+        if (attacker.hp <= 0) {
+          this.units.delete(attacker.uid);
+          events.push({ type: 'die', uid: attacker.uid });
+        }
+      }
     }
   }
 
@@ -313,7 +425,7 @@ export class Battle {
       if (u.type === 'fist') {
         const foe = this.unitAt(u.path, u.row, 'enemy');
         if (foe) {
-          this.dealDamage(events, u, foe, u.atk, 'attack');
+          this.dealDamage(events, u, foe, this.effAtk(u), 'attack');
         } else {
           const next = u.row + 1;
           if (next < ROWS && !this.unitAt(u.path, next, 'player')) {
@@ -323,16 +435,26 @@ export class Battle {
           }
         }
       } else if (u.type === 'sign') {
-        let best = null;
-        for (const e of this.aliveEnemies()) {
-          if (e.path !== u.path) continue;
-          const d = Math.abs(e.row - u.row);
-          if (d <= u.range && (!best || d < Math.abs(best.row - u.row))) best = e;
+        if (u.sweep) {
+          // the Eye strikes every foe on its path within range
+          const targets = this.aliveEnemies().filter(
+            (e) => e.path === u.path && Math.abs(e.row - u.row) <= u.range
+          );
+          for (const e of targets) {
+            if (this.units.has(e.uid)) this.dealDamage(events, u, e, this.effAtk(u), 'shoot');
+          }
+        } else {
+          let best = null;
+          for (const e of this.aliveEnemies()) {
+            if (e.path !== u.path) continue;
+            const d = Math.abs(e.row - u.row);
+            if (d <= u.range && (!best || d < Math.abs(best.row - u.row))) best = e;
+          }
+          if (best) this.dealDamage(events, u, best, this.effAtk(u), 'shoot');
         }
-        if (best) this.dealDamage(events, u, best, u.atk, 'shoot');
       } else if (u.type === 'palm') {
         const foe = this.unitAt(u.path, u.row, 'enemy');
-        if (foe && u.atk > 0) this.dealDamage(events, u, foe, u.atk, 'attack');
+        if (foe && u.atk > 0) this.dealDamage(events, u, foe, this.effAtk(u), 'attack');
       }
       // 'object' does nothing
     }
@@ -436,6 +558,8 @@ export class Battle {
         speed: def.speed || 1,
         slow: !!def.slow,
         boss: !!def.boss,
+        armor: def.armor || 0,
+        ward: 0,
         path: s.path,
         row,
         stunned: false,

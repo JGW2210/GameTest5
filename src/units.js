@@ -318,6 +318,108 @@ export function createUnitGroup(unit) {
   return g;
 }
 
+// ---- enemy intent telegraphs ----------------------------------------------
+
+const INTENT_STYLE = {
+  advance: { color: '#e8e4da' },
+  strike: { color: '#ff6a5a' },
+  volley: { color: '#ffb46b' },
+  siege: { color: '#c9a6ff' },
+  ability: { color: '#ffd970' },
+  wait: { color: '#8a93a0' },
+  dazed: { color: '#8a93a0' },
+};
+
+const intentTextureCache = new Map();
+
+function intentTexture(kind) {
+  if (intentTextureCache.has(kind)) return intentTextureCache.get(kind);
+  const c = document.createElement('canvas');
+  c.width = c.height = 64;
+  const ctx = c.getContext('2d');
+  const color = (INTENT_STYLE[kind] || INTENT_STYLE.advance).color;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 7;
+  ctx.lineCap = 'round';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  if (kind === 'advance') {
+    for (const dy of [0, 18]) {
+      ctx.beginPath();
+      ctx.moveTo(14, 34 + dy);
+      ctx.lineTo(32, 16 + dy);
+      ctx.lineTo(50, 34 + dy);
+      ctx.stroke();
+    }
+  } else if (kind === 'strike') {
+    ctx.beginPath();
+    ctx.moveTo(16, 16);
+    ctx.lineTo(48, 48);
+    ctx.moveTo(48, 16);
+    ctx.lineTo(16, 48);
+    ctx.stroke();
+  } else if (kind === 'volley') {
+    ctx.beginPath();
+    ctx.moveTo(14, 50);
+    ctx.lineTo(46, 18);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(46, 18);
+    ctx.lineTo(30, 20);
+    ctx.moveTo(46, 18);
+    ctx.lineTo(44, 34);
+    ctx.stroke();
+  } else if (kind === 'siege') {
+    ctx.beginPath();
+    ctx.moveTo(32, 10);
+    ctx.lineTo(48, 32);
+    ctx.lineTo(32, 54);
+    ctx.lineTo(16, 32);
+    ctx.closePath();
+    ctx.stroke();
+  } else if (kind === 'ability') {
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      const r = i % 2 === 0 ? 24 : 9;
+      ctx[i === 0 ? 'moveTo' : 'lineTo'](32 + Math.cos(a) * r, 32 + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    // wait / dazed: two bars
+    ctx.beginPath();
+    ctx.moveTo(24, 18);
+    ctx.lineTo(24, 46);
+    ctx.moveTo(40, 18);
+    ctx.lineTo(40, 46);
+    ctx.stroke();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  intentTextureCache.set(kind, tex);
+  return tex;
+}
+
+// Attach or update the floating intent symbol above an enemy.
+export function setIntent(group, kind) {
+  if (group.userData.intentSprite) {
+    group.remove(group.userData.intentSprite);
+    group.userData.intentSprite.material.dispose();
+    group.userData.intentSprite = null;
+  }
+  if (!kind) return;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: intentTexture(kind), transparent: true, depthTest: false, opacity: 0.95 })
+  );
+  sprite.scale.setScalar(0.42);
+  sprite.position.y = group.userData.hpBar.position.y + 0.34;
+  sprite.renderOrder = 45;
+  group.add(sprite);
+  group.userData.intentSprite = sprite;
+}
+
 // Per-frame flourishes: hood-eyes bob gently, flame-eyes flicker.
 export function updateUnitGroup(g, dt) {
   g.traverse((o) => {

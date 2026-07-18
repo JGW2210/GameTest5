@@ -15,6 +15,7 @@ export class Hud {
       kinaeticWrap: $('kinaetic-wrap'),
       obeliskFill: $('hud-obelisk-fill'),
       obeliskText: $('hud-obelisk-text'),
+      gaze: $('hud-gaze'),
       deck: $('hud-deck'),
       discardPile: $('hud-discard'),
       endTurn: $('btn-endturn'),
@@ -72,6 +73,10 @@ export class Hud {
     this.el.obeliskFill.style.width = `${frac * 100}%`;
     this.el.obeliskFill.classList.toggle('low', frac < 0.35);
     this.el.obeliskText.textContent = `OBELISK ${Math.max(hp, 0)} / ${max}`;
+  }
+
+  setGaze(current, next) {
+    this.el.gaze.textContent = `THE EYE WATCHES ${current} · NEXT ${next}`;
   }
 
   setCounts(deck, discard) {
@@ -153,7 +158,9 @@ export class Hud {
           <p><b>Impetus</b> 🔥 — flame energy that calls troops. A fixed measure each turn.</p>
           <p><b>Kinaetic focus</b> — Kinaeto reaches through you once per turn: click a unit to Move or Push it, or cast a Rite card (Crush, Trip, Beckoning).</p>
           <p><b>✋ Open Palm</b> — holds its tile. <b>✊ Closed Fist</b> — advances; attacks foes on its tile. <b>🖐 Hand Sign</b> — casts down its path; can never be moved.</p>
-          <p><b>Cards</b> — 5 to open, 3 each turn. Kinaeto's Beckoning draws more.</p>
+          <p><b>Cards</b> — 5 to open, 3 each turn. Every follower acts the moment it lands.</p>
+          <p><b>The Gaze</b> — each turn the Eye watches one path: cult units there fight harder, and rites cast on that path preserve your focus. The next path is foretold.</p>
+          <p><b>Intents</b> — every crusader shows what it will do next: advance, strike, volley, siege, or worse.</p>
           <p><b>← →</b> (or swipe) — take the flanks. The faithful have left you messages on the walls.</p>
           <p>Survive 4 waves. The 4th brings their Saint-Commander up the centre path.</p>
         </div>`,

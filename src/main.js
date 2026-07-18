@@ -9,7 +9,7 @@ import { CardHand, clearCardTextures } from './cards3d.js';
 import { Hud, PATH_NAMES } from './hud.js';
 import { Battle } from './battle.js';
 import { Tweens, Ease, sleep, floatText } from './effects.js';
-import { createUnitGroup, updateUnitGroup, drawHpBar } from './units.js';
+import { createUnitGroup, updateUnitGroup, drawHpBar, setIntent } from './units.js';
 import { BATTLE_ONE, DIALOGUE, CARDS } from './data.js';
 import { RULES, PATHS, ROWS, COLORS, OBELISK_POS, rowZ } from './config.js';
 
@@ -234,7 +234,8 @@ async function animateAttack(uid, targetUid, dmg, targetHp) {
     a.group.position.copy(start);
   }
   if (t) {
-    floatText(world.scene, tweens, t.group.position.clone().add(new THREE.Vector3(0, 1.6, 0)), `-${dmg}`, '#ff7a6b');
+    const label = dmg === 0 ? 'warded' : `-${dmg}`;
+    floatText(world.scene, tweens, t.group.position.clone().add(new THREE.Vector3(0, 1.6, 0)), label, dmg === 0 ? '#59f0c8' : '#ff7a6b');
     setViewHp(targetUid, targetHp);
     world.addShake(0.12);
   }
@@ -264,7 +265,8 @@ async function animateShoot(uid, targetUid, dmg, targetHp) {
     world.scene.remove(bolt);
   }
   if (t) {
-    floatText(world.scene, tweens, t.group.position.clone().add(new THREE.Vector3(0, 1.6, 0)), `-${dmg}`, '#ff7a6b');
+    const label = dmg === 0 ? 'warded' : `-${dmg}`;
+    floatText(world.scene, tweens, t.group.position.clone().add(new THREE.Vector3(0, 1.6, 0)), label, dmg === 0 ? '#59f0c8' : '#ff7a6b');
     setViewHp(targetUid, targetHp);
   }
 }
@@ -315,7 +317,46 @@ async function processEvents(events) {
         hud.setKinaetic(ev.kinaetic);
         cardHand.setHand(ev.hand, ev.impetus);
         hud.setCounts(battle.deck.length, battle.discard.length);
+        for (const it of ev.intents || []) {
+          const v = unitViews.get(it.uid);
+          if (v) setIntent(v.group, it.intent);
+        }
         await sleep(250);
+        break;
+      }
+      case 'gaze': {
+        board.setGaze(ev.path, ev.next);
+        hud.setGaze(PATH_NAMES[ev.path], PATH_NAMES[ev.next]);
+        await sleep(150);
+        break;
+      }
+      case 'gazeFavor': {
+        hud.toast('The Eye approves — your focus is preserved');
+        break;
+      }
+      case 'ward': {
+        const v = unitViews.get(ev.uid);
+        if (v) {
+          floatText(world.scene, tweens, v.group.position.clone().add(new THREE.Vector3(0, 1.6, 0)), `+${ev.amount} ward`, '#59f0c8');
+        }
+        await sleep(150);
+        break;
+      }
+      case 'rage': {
+        const v = unitViews.get(ev.uid);
+        if (v) {
+          floatText(world.scene, tweens, v.group.position.clone().add(new THREE.Vector3(0, 1.9, 0)), '+1 ⚔', '#ff8a5c');
+        }
+        break;
+      }
+      case 'emberBurst': {
+        const v = unitViews.get(ev.targetUid);
+        if (v) {
+          floatText(world.scene, tweens, v.group.position.clone().add(new THREE.Vector3(0, 1.7, 0)), `ember -${ev.dmg}`, '#ffb46b');
+          setViewHp(ev.targetUid, ev.targetHp);
+          world.addShake(0.15);
+        }
+        await sleep(200);
         break;
       }
       case 'draw': {

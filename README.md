@@ -35,6 +35,19 @@ wait in the deck); *Kinaeto's Beckoning* rite cards draw extra. Two resources dr
   and choose a tile to Move/Push it, or cast a **Kinaetic Rite** card — *Crush* (3 damage),
   *Trip* (stun), or *Beckoning* (draw 3). Rites cost no Impetus.
 
+Combat runs on unit engines rather than flat stat trades:
+
+- **Arrival cries** — every follower acts when placed (the Zealot spits fire, the Warden
+  raises a 2-point ward, the Fleet Cultist is already running, the Acolyte draws a card).
+- **Keywords** — RAGE (attack grows with every strike), ARMOR (flat damage reduction),
+  WARD (absorbs damage first), SWEEP (the Eye of Kinaeto hits everything on its path),
+  and on-death triggers (a slain Zealot burns its killer).
+- **The Gaze of Kinaeto** — each turn the Eye watches one path: cult units there get
+  +1 attack and +1 armor, and rites cast on that path don't consume your Kinaetic focus.
+  The next turn's gaze is telegraphed a turn ahead — chase it with Move and Push.
+- **Enemy intents** — every crusader floats a glowing symbol showing its next action:
+  advance, strike, volley, siege the obelisk, ability, or wait.
+
 Follower types:
 
 | Type | Behaviour |

@@ -49,6 +49,23 @@ export class Board {
       }
     }
 
+    // The Gaze of Kinaeto: soft violet markers over the watched path and a
+    // dimmer herald ring at the mouth of the path it will watch next.
+    this.gazePath = -1;
+    this.nextGazePath = -1;
+    const heraldGeo = new THREE.RingGeometry(0.4, 0.6, 24);
+    this.gazeHeralds = [];
+    for (let p = 0; p < PATHS; p++) {
+      const ring = new THREE.Mesh(
+        heraldGeo,
+        new THREE.MeshBasicMaterial({ color: COLORS.rune, transparent: true, opacity: 0, side: THREE.DoubleSide })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.set(PATH_X[p], 0.32, rowZ(ROWS - 1) + 1.35);
+      this.scene.add(ring);
+      this.gazeHeralds.push(ring);
+    }
+
     // Warning sigils hovering past the mouth of each path.
     const sigilGeo = new THREE.RingGeometry(0.55, 0.85, 6);
     for (let p = 0; p < PATHS; p++) {
@@ -108,6 +125,16 @@ export class Board {
     this.highlighted.clear();
   }
 
+  setGaze(path, nextPath) {
+    this.gazePath = path;
+    this.nextGazePath = nextPath;
+    for (let p = 0; p < PATHS; p++) {
+      for (let r = 0; r < ROWS; r++) {
+        this.tiles[p][r].userData.gaze = p === path;
+      }
+    }
+  }
+
   setWarnings(paths) {
     for (let p = 0; p < PATHS; p++) {
       this.warnMarkers[p].active = paths.includes(p);
@@ -123,6 +150,24 @@ export class Board {
     const pulse = 0.45 + 0.3 * Math.sin(this.time * 5);
     for (const tile of this.highlighted) {
       tile.material.emissiveIntensity = tile.userData.hover ? 1.1 : pulse;
+    }
+    // gaze tint on unselected tiles of the watched path
+    const gazeGlow = 0.14 + 0.05 * Math.sin(this.time * 2.4);
+    for (const tile of this.tileList) {
+      if (this.highlighted.has(tile)) continue;
+      if (tile.userData.gaze) {
+        tile.material.emissive.setHex(COLORS.rune);
+        tile.material.emissiveIntensity = gazeGlow;
+      } else if (tile.material.emissiveIntensity !== 0 && tile.material.emissive.getHex() === COLORS.rune) {
+        tile.material.emissive.setHex(0x000000);
+        tile.material.emissiveIntensity = 1;
+      }
+    }
+    for (let p = 0; p < this.gazeHeralds.length; p++) {
+      const h = this.gazeHeralds[p];
+      const target = p === this.nextGazePath ? 0.3 + 0.15 * Math.sin(this.time * 3) : 0;
+      h.material.opacity += (target - h.material.opacity) * Math.min(dt * 6, 1);
+      h.rotation.z += dt * 0.5;
     }
     for (const m of this.warnMarkers) {
       const target = m.active ? 0.35 + 0.35 * (0.5 + 0.5 * Math.sin(this.time * 4)) : 0;
