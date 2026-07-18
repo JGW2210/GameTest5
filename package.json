@@ -1,0 +1,12 @@
+{
+  "name": "kinaeto",
+  "private": true,
+  "type": "module",
+  "description": "KINAETO — Beneath the Flame. No build step; this file exists so Node (tests) resolves the same #game/* specifiers the browser resolves via the import map in index.html.",
+  "imports": {
+    "#game/*": "./src/*"
+  },
+  "scripts": {
+    "test": "node tests/engine.test.mjs"
+  }
+}

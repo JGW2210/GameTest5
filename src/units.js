@@ -8,7 +8,7 @@
 // steel-and-white knights.
 
 import * as THREE from 'three';
-import { COLORS } from './config.js';
+import { COLORS } from '#game/config.js';
 
 const mat = (color, opts = {}) =>
   new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.1, flatShading: true, ...opts });

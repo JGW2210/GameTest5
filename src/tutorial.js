@@ -10,9 +10,9 @@
 //                          advances steps and fires the doom
 
 import * as THREE from 'three';
-import { DIALOGUE, SERMON_FLOCK } from './data.js';
-import { COLORS } from './config.js';
-import { sleep } from './effects.js';
+import { DIALOGUE, SERMON_FLOCK } from '#game/data.js';
+import { COLORS } from '#game/config.js';
+import { sleep } from '#game/effects.js';
 
 export class Tutorial {
   // ctx: {battle, board, hud, world, kinaeto, cardHand, tweens, unitViews,

@@ -4,19 +4,19 @@
 // animation of battle engine events, and the hub's station interactions.
 
 import * as THREE from 'three';
-import { World } from './scene.js';
-import { Board } from './board.js';
-import { Kinaeto } from './kinaeto.js';
-import { CardHand, clearCardTextures, setCardSource } from './cards3d.js';
-import { Hud, PATH_NAMES } from './hud.js';
-import { Battle } from './battle.js';
-import { Tweens, Ease, sleep, floatText } from './effects.js';
-import { createUnitGroup, updateUnitGroup, drawHpBar, setIntent } from './units.js';
-import { BATTLE_ONE, TUTORIAL_BATTLE, TUTORIAL_DECK, DIALOGUE } from './data.js';
-import { RULES, PATHS, ROWS, COLORS, OBELISK_POS, BOARD_THEMES, rowZ } from './config.js';
-import { Tutorial } from './tutorial.js';
-import { Hub } from './hub.js';
-import { loadMeta, saveMeta, effectiveCards } from './meta.js';
+import { World } from '#game/scene.js';
+import { Board } from '#game/board.js';
+import { Kinaeto } from '#game/kinaeto.js';
+import { CardHand, clearCardTextures, setCardSource } from '#game/cards3d.js';
+import { Hud, PATH_NAMES } from '#game/hud.js';
+import { Battle } from '#game/battle.js';
+import { Tweens, Ease, sleep, floatText } from '#game/effects.js';
+import { createUnitGroup, updateUnitGroup, drawHpBar, setIntent } from '#game/units.js';
+import { BATTLE_ONE, TUTORIAL_BATTLE, TUTORIAL_DECK, DIALOGUE } from '#game/data.js';
+import { RULES, PATHS, ROWS, COLORS, OBELISK_POS, BOARD_THEMES, rowZ } from '#game/config.js';
+import { Tutorial } from '#game/tutorial.js';
+import { Hub } from '#game/hub.js';
+import { loadMeta, saveMeta, effectiveCards } from '#game/meta.js';
 
 const canvas = document.getElementById('game');
 const world = new World(canvas);

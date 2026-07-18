@@ -8,8 +8,8 @@
 // setStage() tears down and rebuilds the environment group.
 
 import * as THREE from 'three';
-import { CAMERA, CAMERA_POSES, COLORS, OBELISK_POS, PORTAL_POS, PATH_X, rowZ, ROWS, WALLS } from './config.js';
-import { drawGlyph } from './cards3d.js';
+import { CAMERA, CAMERA_POSES, COLORS, OBELISK_POS, PORTAL_POS, PATH_X, rowZ, ROWS, WALLS } from '#game/config.js';
+import { drawGlyph } from '#game/cards3d.js';
 
 function jitterGeometry(geo, amount) {
   const pos = geo.attributes.position;

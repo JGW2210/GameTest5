@@ -32,8 +32,8 @@
 //  stunned  {uid}                               — unit skipped its action
 //  win / lose
 
-import { CARDS, ENEMIES, STARTER_DECK } from './data.js';
-import { RULES, ROWS, PATHS, OBELISK_ROW } from './config.js';
+import { CARDS, ENEMIES, STARTER_DECK } from '#game/data.js';
+import { RULES, ROWS, PATHS, OBELISK_ROW } from '#game/config.js';
 
 let uidCounter = 1;
 

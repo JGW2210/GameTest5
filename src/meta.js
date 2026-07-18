@@ -2,7 +2,7 @@
 // march in the deck, what the smith has forged, and story progress. Stored in
 // localStorage; everything degrades gracefully if storage is unavailable.
 
-import { CARDS, STARTER_DECK } from './data.js';
+import { CARDS, STARTER_DECK } from '#game/data.js';
 
 const STORE_KEY = 'kinaeto-meta-v1';
 

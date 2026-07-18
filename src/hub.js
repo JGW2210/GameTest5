@@ -3,11 +3,11 @@
 //   the Severed Link (Kinaeto, who confirms you're ready and opens the map).
 // Stations are raycast in the 3D scene; their workings open as DOM panels.
 
-import { DIALOGUE, CARDS } from './data.js';
+import { DIALOGUE, CARDS } from '#game/data.js';
 import {
   DECK_MIN, DECK_MAX, deckCount, addToDeck, removeFromDeck,
   canUpgrade, applyUpgrade, forgeChargesLeft, effectiveCards,
-} from './meta.js';
+} from '#game/meta.js';
 
 const TYPE_GLYPHS = { fist: '✊', palm: '✋', sign: '🖐', object: '⛰', tk: '◉' };
 const HUB_HINT = 'The refuge is quiet. Choose a station — altar, forge, or the severed link.';
