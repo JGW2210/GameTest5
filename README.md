@@ -26,7 +26,7 @@ half**, the bottom 3 are the **enemy half**. Enemies emerge at the path mouths a
 tile by tile toward the obelisk; if they reach it, they batter it down. Lose the obelisk
 and the battle is lost. Defeat every wave and it is won.
 
-You start with **5 cards** and draw **3 more each turn** (hand cap of 10 — undrawn cards
+You start with **5 cards** and draw **3 more each turn** (hand cap of 8 — undrawn cards
 wait in the deck); *Kinaeto's Beckoning* rite cards draw extra. Two resources drive a turn:
 
 - **Impetus** 🔥 — flame energy that pays for followers. A fixed measure every turn; it
@@ -102,31 +102,67 @@ his whole path every second turn.
 
 ## Deployment
 
-`.github/workflows/deploy.yml` publishes the repository root to GitHub Pages on every push
-to `main`. One-time setup: in the repo settings, under **Pages**, set the source to
-**GitHub Actions**.
+GitHub Pages serves the repository root **from the `main` branch** ("Deploy from a
+branch" mode; `.nojekyll` skips Jekyll processing). Every push to `main` redeploys.
+`.github/workflows/deploy.yml` is a leftover from the Actions-based deploy mode — it is
+unused (and will show failed runs) while Pages is in branch mode; delete it or switch the
+Pages source to GitHub Actions if preferred.
 
 ## Project layout
 
 ```
 index.html          shell, import map, HUD DOM
-style.css           HUD / overlay styling
-vendor/             vendored three.module.min.js (r160)
-src/config.js       board layout, rules, palette
-src/data.js         cards, enemies, waves, Kinaeto's dialogue
-src/battle.js       turn engine (pure logic, emits animation events)
-src/scene.js        renderer, camera, cave, torches, obelisk, portal, embers
-src/board.js        the 3 × 7 tile paths, highlights, warning sigils
-src/units.js        procedural low-poly unit meshes + HP bars
+style.css           boxless glowing HUD / overlay styling, runic font face
+vendor/             vendored three.module.min.js (r160) + Uncial Antiqua woff2
+src/config.js       board layout, RULES (all balance knobs), camera poses, palette
+src/data.js         cards (stats/keywords/cries), enemies, waves, Kinaeto's dialogue
+src/battle.js       turn engine — pure logic, no three.js, emits animation events
+src/scene.js        renderer, camera rig (glance/side/focus), cave, obelisk, walls
+src/board.js        the 3 × 7 tile paths, highlights, gaze tint, warning sigils
+src/units.js        procedural unit meshes (cloaked cult / knights), HP bars, intents
 src/kinaeto.js      the hand-with-an-eye, emerge/retreat/blink
-src/cards3d.js      the hand of cards as 3D objects (canvas-textured)
+src/cards3d.js      the hand of cards as 3D objects (canvas faces, springs, tilt)
 src/effects.js      tween manager, floating combat text
-src/hud.js          DOM HUD: energy, obelisk, telekinesis, dialogue, screens
-src/main.js         input modes, event animation, game flow
+src/hud.js          DOM HUD: impetus flames, kinaetic eye, gaze line, dialogue, screens
+src/main.js         input modes, event animation/batching, stack formations, game flow
+tests/engine.test.mjs  engine test suite — run with `node tests/engine.test.mjs`
 ```
+
+## Development notes (for picking the project back up)
+
+**Workflow.** Development happens on `claude/roguelike-deck-telekinesis-pb1ftb`; `main`
+is kept in sync (same commits) because Pages deploys from it. Push to both. There is no
+build step and no node_modules — the repo runs as-is from any static server.
+
+**Architecture.** `src/battle.js` is a pure state machine: every mutating call returns an
+ordered list of typed events (documented at the top of the file), and `src/main.js`
+consumes them sequentially — events sharing a `batch` tag animate as one overlapping
+brawl. All balance lives in `RULES` (`src/config.js`) and the card/enemy defs
+(`src/data.js`); camera framing lives in `CAMERA_POSES`.
+
+**Testing.** `node tests/engine.test.mjs` runs the 30-check engine suite (stacks,
+clashes, breakthrough, burn, gaze, intents, cries, rites). For interaction testing the
+page exposes `window.__game` (battle, mode, board, cardHand, unitViews, world, plus
+`_test` helpers) — Playwright scripts drive real drags by projecting mesh positions
+through `world.camera` to screen coordinates. Dialogue advances only on click/Space, so
+automated runs must click `#dialogue` (dispatch via JS — its hit-target moves).
+
+**Turn resolution order** (in `battle.endTurn`): sign casts → clashes on contested tiles
+(cult strikes first, arrival order, front unit tanks) → unengaged fists advance →
+unengaged enemies act (boss ability / volley / siege / advance) → wave spawns & warnings
+→ gaze rotates → next turn (impetus resets to 4, draw 3, stuns clear).
+
+**Known watchpoints** (deliberately left for playtesting):
+- Clashes made offense strong; waves may need tuning up (counts or stats) in
+  `BATTLE_ONE` (`src/data.js`).
+- Stack front is "first to arrive" — there is no way to rotate a fresh Warden to the
+  front of an existing stack yet. A Kinaetic reorder is the natural next mechanic.
+- The gaze can pick the same path twice in a row (`nextGazePath` is uniform random).
+- Enemy sign-types don't exist yet; enemy `armor` is the only crusader keyword.
 
 ## Roadmap (post-prototype)
 
 - A run map between battles (roguelike node choices), card rewards and deck editing
 - More battles, followers, relics, and boss abilities
+- Stack reordering via telekinesis; more rites (Levitate a tile, Seismic Clap, Offering)
 - Sound, and richer telekinesis feedback (grab-and-drag with the ghostly hand)
