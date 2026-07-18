@@ -81,7 +81,8 @@ export const CARDS = {
     cost: 1,
     hp: 8,
     atk: 0,
-    desc: 'Blocks a tile. Telekinesis may hurl it anywhere.',
+    size: 2,
+    desc: 'Fills most of a tile (size 2). Telekinesis may hurl it anywhere.',
     flavor: 'Just a rock. Kinaeto is fond of rocks.',
   },
 
@@ -172,6 +173,7 @@ export const ENEMIES = {
     kind: 'melee',
     boss: true,
     armor: 1,
+    size: 3,
     hp: 26,
     atk: 4,
     desc: 'ARMOR 1. Too heavy to Move or Push. Crush is halved. Every 2nd turn: Consecration — 2 damage to every cultist on his path.',

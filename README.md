@@ -35,6 +35,14 @@ wait in the deck); *Kinaeto's Beckoning* rite cards draw extra. Two resources dr
   and choose a tile to Move/Push it, or cast a **Kinaetic Rite** card — *Crush* (3 damage),
   *Trip* (stun), or *Beckoning* (draw 3). Rites cost no Impetus.
 
+Tiles are ranks, not squares: each holds up to **3 total unit size per side** (the
+Braced Stone is size 2, the boss size 3), so allies never block allies and waves arrive
+massed at the path mouths. When a tile is contested, **every unit on it strikes once per
+turn** — your stack first, in arrival order, against the front crusader; survivors hit
+your front unit back. The turn resolves in phases (casts → clashes → movement → enemy
+action), so a stack that clears its tile advances the same turn. Any card can be
+**burned** — dragged into the Impetus flames — for +1 Impetus (up to 8).
+
 Combat runs on unit engines rather than flat stat trades:
 
 - **Arrival cries** — every follower acts when placed (the Zealot spits fire, the Warden

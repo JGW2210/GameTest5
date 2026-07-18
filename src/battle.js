@@ -1,20 +1,34 @@
 // Core battle engine. Pure game logic — no rendering. Every mutating method
 // returns an ordered list of events the view layer animates one by one.
 //
-// Event types:
-//  turnStart {turn, impetus, impetusMax, kinaetic, hand} — new player turn
+// Turn resolution (Monster Train-style flow):
+//   1. casts    — Hand Signs fire (Sweep hits everything in range)
+//   2. clashes  — every unit on a contested tile strikes once: the cult
+//                 stack first (arrival order, hitting the front enemy),
+//                 then surviving enemies hit the front cultist
+//   3. advance  — unengaged Closed Fists surge into free space (a stack
+//                 that cleared its tile breaks through the same turn)
+//   4. enemies  — unengaged crusaders volley / siege / advance
+//   5. waves    — spawns (stacked at the mouth), warnings, the gaze turns
+//
+// Tiles hold up to RULES.tileCapacity total unit size per side; allies
+// never block allies. Any card may be burned for +1 Impetus.
+//
+// Event types (view layer):
+//  turnStart {turn, impetus, impetusMax, kinaetic, hand, intents}
 //  draw     {hand}                              — extra cards drawn mid-turn
+//  burn     {key, impetus, hand}                — card burned for Impetus
 //  place    {unit}                              — card resolved onto a tile
 //  warn     {paths, isBoss}                     — forewarning of next wave
 //  spawn    {unit, isBoss}                      — enemy emerged at a path entrance
-//  move     {uid, from, to, tk}                 — unit moved one or more tiles
-//  attack   {uid, targetUid, dmg, targetHp}     — melee hit
-//  shoot    {uid, targetUid, dmg, targetHp}     — ranged hit
+//  move     {uid, from, to, tk}                 — unit moved
+//  attack / shoot {uid, targetUid, dmg, absorbed, targetHp, batch?}
 //  die      {uid}                               — unit destroyed
 //  obeliskHit {uid, dmg, hp}                    — obelisk damaged
 //  bossAbility {uid, victims:[{uid,dmg,hp}]}    — Consecration
-//  crush    {uid, dmg, hp}                      — telekinetic crush
-//  trip     {uid}                               — telekinetic trip (stun)
+//  crush {uid, dmg, hp} / trip {uid}            — rite effects
+//  rage {uid, atk} / ward {uid, amount} / emberBurst {uid, targetUid, dmg, targetHp}
+//  gaze {path, next} / gazeFavor {uid}
 //  stunned  {uid}                               — unit skipped its action
 //  win / lose
 
@@ -36,10 +50,7 @@ export class Battle {
   constructor(def) {
     this.def = def;
     this.turn = 1;
-    // Impetus: flame energy that calls troops. Flat per turn — never grows.
     this.impetus = RULES.impetusPerTurn;
-    // Kinaetic focus: Kinaeto reaches through you once per turn. Spent by
-    // moving/pushing units or by casting a Kinaetic Rite card.
     this.kinaeticUsed = 0;
     this.obeliskHp = def.obeliskHp;
     this.obeliskMaxHp = def.obeliskHp;
@@ -50,14 +61,13 @@ export class Battle {
     this.wavesSpawned = 0;
     this.over = false;
     this.result = null;
-    // The Gaze of Kinaeto: one path is watched each turn (+1 atk / +1 armor
-    // for cult units there; rites cast on it preserve Kinaetic focus). The
-    // next turn's gaze is telegraphed a turn ahead.
+    this.arrivalSeq = 1; // stack ordering: lowest arrival = front of tile
     this.gazePath = Math.floor(Math.random() * PATHS);
     this.nextGazePath = Math.floor(Math.random() * PATHS);
   }
 
-  // Effective stats under the gaze.
+  // ---- gaze ---------------------------------------------------------------
+
   effAtk(u) {
     return u.atk + (u.side === 'player' && u.path === this.gazePath ? 1 : 0);
   }
@@ -66,7 +76,7 @@ export class Battle {
     return (u.armor || 0) + (u.side === 'player' && u.path === this.gazePath ? 1 : 0);
   }
 
-  // ---- setup -------------------------------------------------------------
+  // ---- setup --------------------------------------------------------------
 
   start() {
     const events = [];
@@ -90,18 +100,68 @@ export class Battle {
     };
   }
 
-  // Best-effort prediction of what each enemy will do at the end of this
-  // player turn, mirroring actEnemyUnits' decision order.
+  kinaeticAvailable() {
+    return !this.over && this.kinaeticUsed < RULES.kinaeticPerTurn;
+  }
+
+  drawCards(n) {
+    for (let i = 0; i < n; i++) {
+      if (this.hand.length >= RULES.handMax) break;
+      if (this.deck.length === 0) {
+        if (this.discard.length === 0) break;
+        this.deck = shuffle(this.discard);
+        this.discard = [];
+      }
+      this.hand.push(this.deck.pop());
+    }
+  }
+
+  // ---- stacks -------------------------------------------------------------
+
+  unitsAt(path, row, side) {
+    return [...this.units.values()]
+      .filter((u) => u.path === path && u.row === row && (!side || u.side === side))
+      .sort((a, b) => a.arrival - b.arrival);
+  }
+
+  // Front unit of a stack (oldest arrival) — the one that takes the hits.
+  unitAt(path, row, side) {
+    return this.unitsAt(path, row, side)[0] || null;
+  }
+
+  stackSize(path, row, side) {
+    return this.unitsAt(path, row, side).reduce((s, u) => s + (u.size || 1), 0);
+  }
+
+  hasSpace(path, row, side, size) {
+    return this.stackSize(path, row, side) + size <= RULES.tileCapacity;
+  }
+
+  contested(path, row) {
+    return !!(this.unitAt(path, row, 'player') && this.unitAt(path, row, 'enemy'));
+  }
+
+  aliveEnemies() {
+    return [...this.units.values()].filter((u) => u.side === 'enemy');
+  }
+
+  snapshot(u) {
+    return { ...u };
+  }
+
+  // ---- intents ------------------------------------------------------------
+
   computeIntents() {
     const intents = [];
     for (const u of this.aliveEnemies()) {
       let intent;
       if (u.stunned) intent = 'dazed';
+      else if (this.contested(u.path, u.row)) intent = 'strike';
       else if (u.boss && (u.actCount + 1) % 2 === 0) intent = 'ability';
-      else if (this.unitAt(u.path, u.row, 'player')) intent = 'strike';
       else if (u.kind === 'ranged' && this.rangedTarget(u)) intent = 'volley';
       else if (u.row === OBELISK_ROW) intent = 'siege';
       else if (u.slow && (u.actCount + 1) % 2 === 1) intent = 'wait';
+      else if (u.row > 0 && !this.hasSpace(u.path, u.row - 1, 'enemy', u.size || 1)) intent = 'wait';
       else intent = 'advance';
       u.intent = intent;
       intents.push({ uid: u.uid, intent });
@@ -119,42 +179,7 @@ export class Battle {
     return best;
   }
 
-  kinaeticAvailable() {
-    return !this.over && this.kinaeticUsed < RULES.kinaeticPerTurn;
-  }
-
-  // Draw up to n cards, never past the hand cap; undrawn cards stay in the
-  // deck for future turns. Played cards cycle back in via the discard pile.
-  drawCards(n) {
-    for (let i = 0; i < n; i++) {
-      if (this.hand.length >= RULES.handMax) break;
-      if (this.deck.length === 0) {
-        if (this.discard.length === 0) break;
-        this.deck = shuffle(this.discard);
-        this.discard = [];
-      }
-      this.hand.push(this.deck.pop());
-    }
-  }
-
-  // ---- queries -----------------------------------------------------------
-
-  unitAt(path, row, side) {
-    for (const u of this.units.values()) {
-      if (u.path === path && u.row === row && (!side || u.side === side)) return u;
-    }
-    return null;
-  }
-
-  aliveEnemies() {
-    return [...this.units.values()].filter((u) => u.side === 'enemy');
-  }
-
-  snapshot(u) {
-    return { ...u };
-  }
-
-  // ---- card placement ----------------------------------------------------
+  // ---- card placement -----------------------------------------------------
 
   placementRows(cardKey) {
     const def = CARDS[cardKey];
@@ -171,7 +196,9 @@ export class Battle {
     if (!this.placementRows(key).includes(row)) {
       return { ok: false, reason: def.fast ? 'Place on your half or the obelisk room' : 'Base followers deploy on the first two tiles (or the obelisk room)' };
     }
-    if (this.unitAt(path, row, 'player')) return { ok: false, reason: 'Tile already held by a follower' };
+    if (!this.hasSpace(path, row, 'player', def.size || 1)) {
+      return { ok: false, reason: 'No room in that tile’s ranks' };
+    }
     return { ok: true };
   }
 
@@ -198,6 +225,8 @@ export class Battle {
       sweep: !!def.sweep,
       onDeath: def.onDeath || null,
       ward: 0,
+      size: def.size || 1,
+      arrival: this.arrivalSeq++,
       path,
       row,
       stunned: false,
@@ -210,7 +239,6 @@ export class Battle {
     return { ok: true, events };
   }
 
-  // Every follower does something the moment it lands.
   arrivalCry(events, unit, def) {
     if (def.cry === 'bolt') {
       let best = null;
@@ -225,15 +253,34 @@ export class Battle {
       events.push({ type: 'ward', uid: unit.uid, amount: 2 });
     } else if (def.cry === 'advance') {
       const next = unit.row + 1;
-      if (next < ROWS && !this.unitAt(unit.path, next, 'player')) {
+      if (next < ROWS && this.hasSpace(unit.path, next, 'player', unit.size)) {
         const from = { path: unit.path, row: unit.row };
         unit.row = next;
+        unit.arrival = this.arrivalSeq++;
         events.push({ type: 'move', uid: unit.uid, from, to: { path: unit.path, row: unit.row } });
       }
     } else if (def.cry === 'draw') {
       this.drawCards(1);
       events.push({ type: 'draw', hand: this.hand.slice() });
     }
+  }
+
+  // ---- burning cards for Impetus -----------------------------------------
+
+  canBurnCard(handIndex) {
+    if (this.over) return { ok: false, reason: 'battle over' };
+    if (!this.hand[handIndex]) return { ok: false, reason: 'no card' };
+    if (this.impetus >= RULES.impetusBurnMax) return { ok: false, reason: 'The flames can hold no more' };
+    return { ok: true };
+  }
+
+  burnCard(handIndex) {
+    const check = this.canBurnCard(handIndex);
+    if (!check.ok) return { ok: false, reason: check.reason, events: [] };
+    const key = this.hand.splice(handIndex, 1)[0];
+    this.discard.push(key);
+    this.impetus = Math.min(this.impetus + 1, RULES.impetusBurnMax);
+    return { ok: true, events: [{ type: 'burn', key, impetus: this.impetus, hand: this.hand.slice() }] };
   }
 
   // ---- telekinesis: click a unit, choose a tile --------------------------
@@ -249,12 +296,11 @@ export class Battle {
     return { ok: true };
   }
 
-  // All tiles Kinaeto could carry this unit to: adjacent tiles are a Move,
-  // two tiles along its own path are a Push.
   tkMoveOptions(uid) {
     const u = this.units.get(uid);
     if (!u || !this.canTkGrab(uid).ok) return [];
     const options = [];
+    const size = u.size || 1;
     const candidates = [
       { path: u.path, row: u.row - 1, power: 'move' },
       { path: u.path, row: u.row + 1, power: 'move' },
@@ -263,7 +309,7 @@ export class Battle {
     ];
     for (const c of candidates) {
       if (c.path < 0 || c.path >= PATHS || c.row < 0 || c.row >= ROWS) continue;
-      if (this.unitAt(c.path, c.row, u.side)) continue; // same side blocks
+      if (!this.hasSpace(c.path, c.row, u.side, size)) continue;
       options.push(c);
     }
     for (const dir of [-1, 1]) {
@@ -271,7 +317,7 @@ export class Battle {
       for (let step = 0; step < RULES.pushDistance; step++) {
         const next = landing + dir;
         if (next < 0 || next >= ROWS) break;
-        if (this.unitAt(u.path, next, u.side)) break; // same side blocks
+        if (!this.hasSpace(u.path, next, u.side, size)) break;
         landing = next;
       }
       if (Math.abs(landing - u.row) > 1) options.push({ path: u.path, row: landing, power: 'push' });
@@ -289,6 +335,7 @@ export class Battle {
     const from = { path: u.path, row: u.row };
     u.path = dest.path;
     u.row = dest.row;
+    u.arrival = this.arrivalSeq++;
     events.push({ type: 'move', uid, from, to: { path: dest.path, row: dest.row }, tk: true, power: found.power });
     this.kinaeticUsed++;
     this.checkEnd(events);
@@ -316,7 +363,6 @@ export class Battle {
     const def = CARDS[key];
     this.discard.push(key);
     const events = [];
-    // Rites cast under the Gaze preserve your Kinaetic focus.
     const target = this.units.get(targetUid);
     const underGaze = def.power !== 'beckon' && target && target.path === this.gazePath;
     if (underGaze) events.push({ type: 'gazeFavor', uid: targetUid });
@@ -344,34 +390,8 @@ export class Battle {
     return { ok: true, events };
   }
 
-  // ---- end of turn resolution -------------------------------------------
+  // ---- damage pipeline ----------------------------------------------------
 
-  endTurn() {
-    if (this.over) return [];
-    const events = [];
-
-    this.actPlayerUnits(events);
-    if (!this.checkEnd(events)) this.actEnemyUnits(events);
-    if (!this.checkEnd(events)) this.spawnDueWave(events);
-    this.emitDueWarn(events);
-    if (this.checkEnd(events)) return events;
-
-    // the Eye turns to its foretold path and picks its next
-    this.gazePath = this.nextGazePath;
-    this.nextGazePath = Math.floor(Math.random() * PATHS);
-    events.push({ type: 'gaze', path: this.gazePath, next: this.nextGazePath });
-
-    // next turn — the hand carries over; draw 3 more up to the cap
-    this.turn++;
-    this.impetus = RULES.impetusPerTurn;
-    this.kinaeticUsed = 0;
-    this.drawCards(RULES.drawPerTurn);
-    events.push(this.turnStartEvent());
-    return events;
-  }
-
-  // Damage pipeline: ward absorbs first, then armor shaves the rest; RAGE
-  // attackers grow with every strike; ember units burn their killer.
   dealDamage(events, attacker, target, dmg, kind, opts = {}) {
     let amount = dmg;
     if (!opts.pierceArmor) amount = Math.max(amount - this.effArmor(target), 0);
@@ -382,99 +402,159 @@ export class Battle {
       amount -= absorbed;
     }
     target.hp -= amount;
-    events.push({
+    const ev = {
       type: kind,
       uid: attacker.uid,
       targetUid: target.uid,
       dmg: amount,
       absorbed,
       targetHp: target.hp,
-    });
+    };
+    if (opts.batch) ev.batch = opts.batch;
+    events.push(ev);
     if (attacker.rage && !opts.noRage) {
       attacker.atk += 1;
-      events.push({ type: 'rage', uid: attacker.uid, atk: attacker.atk });
+      events.push({ type: 'rage', uid: attacker.uid, atk: attacker.atk, batch: opts.batch });
     }
     if (target.hp <= 0) {
       this.units.delete(target.uid);
-      events.push({ type: 'die', uid: target.uid });
+      events.push({ type: 'die', uid: target.uid, batch: opts.batch });
       if (target.onDeath === 'ember' && this.units.has(attacker.uid)) {
-        // the slain zealot's flame leaps to its killer
         attacker.hp -= 1;
-        events.push({ type: 'emberBurst', uid: target.uid, targetUid: attacker.uid, dmg: 1, targetHp: attacker.hp });
+        events.push({ type: 'emberBurst', uid: target.uid, targetUid: attacker.uid, dmg: 1, targetHp: attacker.hp, batch: opts.batch });
         if (attacker.hp <= 0) {
           this.units.delete(attacker.uid);
-          events.push({ type: 'die', uid: attacker.uid });
+          events.push({ type: 'die', uid: attacker.uid, batch: opts.batch });
         }
       }
     }
   }
 
-  actPlayerUnits(events) {
-    // Front-most units act first so a column can advance in one turn.
-    const players = [...this.units.values()]
-      .filter((u) => u.side === 'player')
+  // ---- end of turn resolution --------------------------------------------
+
+  endTurn() {
+    if (this.over) return [];
+    const events = [];
+    this._stunnedShown = new Set();
+
+    this.phaseCasts(events);
+    if (!this.checkEnd(events)) this.phaseClashes(events);
+    if (!this.checkEnd(events)) this.phaseAdvance(events);
+    if (!this.checkEnd(events)) this.phaseEnemies(events);
+    if (!this.checkEnd(events)) this.spawnDueWave(events);
+    this.emitDueWarn(events);
+    if (this.checkEnd(events)) return events;
+
+    // recover from stuns, turn the gaze, next turn
+    for (const u of this.units.values()) u.stunned = false;
+    this.gazePath = this.nextGazePath;
+    this.nextGazePath = Math.floor(Math.random() * PATHS);
+    events.push({ type: 'gaze', path: this.gazePath, next: this.nextGazePath });
+
+    this.turn++;
+    this.impetus = RULES.impetusPerTurn;
+    this.kinaeticUsed = 0;
+    this.drawCards(RULES.drawPerTurn);
+    events.push(this.turnStartEvent());
+    return events;
+  }
+
+  skipIfStunned(events, u) {
+    if (!u.stunned) return false;
+    if (!this._stunnedShown.has(u.uid)) {
+      this._stunnedShown.add(u.uid);
+      events.push({ type: 'stunned', uid: u.uid });
+    }
+    return true;
+  }
+
+  // Phase 1 — Hand Signs cast down their paths.
+  phaseCasts(events) {
+    const signs = [...this.units.values()]
+      .filter((u) => u.side === 'player' && u.type === 'sign')
       .sort((a, b) => b.row - a.row);
-
-    for (const u of players) {
+    for (const u of signs) {
       if (!this.units.has(u.uid)) continue;
-      if (u.stunned) {
-        u.stunned = false;
-        events.push({ type: 'stunned', uid: u.uid });
-        continue;
-      }
-      if (u.type === 'fist') {
-        const foe = this.unitAt(u.path, u.row, 'enemy');
-        if (foe) {
-          this.dealDamage(events, u, foe, this.effAtk(u), 'attack');
-        } else {
-          const next = u.row + 1;
-          if (next < ROWS && !this.unitAt(u.path, next, 'player')) {
-            const from = { path: u.path, row: u.row };
-            u.row = next;
-            events.push({ type: 'move', uid: u.uid, from, to: { path: u.path, row: u.row } });
-          }
+      if (this.skipIfStunned(events, u)) continue;
+      if (u.sweep) {
+        const targets = this.aliveEnemies().filter(
+          (e) => e.path === u.path && Math.abs(e.row - u.row) <= u.range
+        );
+        for (const e of targets) {
+          if (this.units.has(e.uid)) this.dealDamage(events, u, e, this.effAtk(u), 'shoot');
         }
-      } else if (u.type === 'sign') {
-        if (u.sweep) {
-          // the Eye strikes every foe on its path within range
-          const targets = this.aliveEnemies().filter(
-            (e) => e.path === u.path && Math.abs(e.row - u.row) <= u.range
-          );
-          for (const e of targets) {
-            if (this.units.has(e.uid)) this.dealDamage(events, u, e, this.effAtk(u), 'shoot');
-          }
-        } else {
-          let best = null;
-          for (const e of this.aliveEnemies()) {
-            if (e.path !== u.path) continue;
-            const d = Math.abs(e.row - u.row);
-            if (d <= u.range && (!best || d < Math.abs(best.row - u.row))) best = e;
-          }
-          if (best) this.dealDamage(events, u, best, this.effAtk(u), 'shoot');
+      } else {
+        let best = null;
+        for (const e of this.aliveEnemies()) {
+          if (e.path !== u.path) continue;
+          const d = Math.abs(e.row - u.row);
+          if (d <= u.range && (!best || d < Math.abs(best.row - u.row))) best = e;
         }
-      } else if (u.type === 'palm') {
-        const foe = this.unitAt(u.path, u.row, 'enemy');
-        if (foe && u.atk > 0) this.dealDamage(events, u, foe, this.effAtk(u), 'attack');
+        if (best) this.dealDamage(events, u, best, this.effAtk(u), 'shoot');
       }
-      // 'object' does nothing
     }
   }
 
-  actEnemyUnits(events) {
-    // Enemies closest to the obelisk act first.
-    const enemies = this.aliveEnemies().sort((a, b) => a.row - b.row);
+  // Phase 2 — full exchanges on every contested tile.
+  phaseClashes(events) {
+    const tiles = new Set();
+    for (const u of this.units.values()) tiles.add(`${u.path}:${u.row}`);
+    for (const key of tiles) {
+      const [path, row] = key.split(':').map(Number);
+      if (!this.contested(path, row)) continue;
+      const batch = `clash-${path}-${row}-${this.turn}`;
 
+      // the cult strikes first, in arrival order, at the front crusader
+      for (const pu of this.unitsAt(path, row, 'player')) {
+        if (!this.units.has(pu.uid) || pu.type === 'object') continue;
+        if (this.skipIfStunned(events, pu)) continue;
+        if (pu.type === 'sign') continue; // signs already cast this turn
+        const foe = this.unitAt(path, row, 'enemy');
+        if (!foe) break;
+        if (pu.atk <= 0) continue;
+        this.dealDamage(events, pu, foe, this.effAtk(pu), 'attack', { batch });
+      }
+
+      // survivors strike back at the front cultist
+      for (const eu of this.unitsAt(path, row, 'enemy')) {
+        if (!this.units.has(eu.uid)) continue;
+        if (this.skipIfStunned(events, eu)) continue;
+        const def = this.unitAt(path, row, 'player');
+        if (!def) break;
+        this.dealDamage(events, eu, def, eu.atk, 'attack', { batch });
+      }
+    }
+  }
+
+  // Phase 3 — unengaged Closed Fists advance into free space.
+  phaseAdvance(events) {
+    const fists = [...this.units.values()]
+      .filter((u) => u.side === 'player' && u.type === 'fist')
+      .sort((a, b) => b.row - a.row);
+    for (const u of fists) {
+      if (!this.units.has(u.uid)) continue;
+      if (u.stunned) continue; // already showed the stun in clash if any
+      if (this.contested(u.path, u.row)) continue; // engaged units hold
+      const next = u.row + 1;
+      if (next >= ROWS) continue;
+      if (!this.hasSpace(u.path, next, 'player', u.size)) continue;
+      const from = { path: u.path, row: u.row };
+      u.row = next;
+      u.arrival = this.arrivalSeq++;
+      events.push({ type: 'move', uid: u.uid, from, to: { path: u.path, row: u.row } });
+    }
+  }
+
+  // Phase 4 — unengaged crusaders act.
+  phaseEnemies(events) {
+    const enemies = this.aliveEnemies().sort((a, b) => a.row - b.row);
     for (const u of enemies) {
       if (!this.units.has(u.uid)) continue;
-      if (u.stunned) {
-        u.stunned = false;
-        events.push({ type: 'stunned', uid: u.uid });
-        continue;
-      }
+      if (this.skipIfStunned(events, u)) continue;
+      if (this.contested(u.path, u.row)) continue; // engaged — struck in clash
       u.actCount++;
 
       if (u.boss && u.actCount % 2 === 0) {
-        // Consecration: 2 damage to every player unit on the boss's path.
         const victims = [];
         for (const p of [...this.units.values()]) {
           if (p.side !== 'player' || p.path !== u.path) continue;
@@ -491,21 +571,11 @@ export class Battle {
         continue;
       }
 
-      const defender = this.unitAt(u.path, u.row, 'player');
-      if (defender) {
-        this.dealDamage(events, u, defender, u.atk, 'attack');
-        continue;
-      }
-
       if (u.kind === 'ranged') {
-        let best = null;
-        for (const p of [...this.units.values()]) {
-          if (p.side !== 'player' || p.path !== u.path) continue;
-          const d = Math.abs(p.row - u.row);
-          if (d <= u.range && (!best || d < Math.abs(best.row - u.row))) best = p;
-        }
-        if (best) {
-          this.dealDamage(events, u, best, u.atk, 'shoot');
+        const target = this.rangedTarget(u);
+        if (target) {
+          const front = this.unitAt(target.path, target.row, 'player') || target;
+          this.dealDamage(events, u, front, u.atk, 'shoot');
           continue;
         }
       }
@@ -516,7 +586,7 @@ export class Battle {
         continue;
       }
 
-      if (u.slow && u.actCount % 2 === 1) continue; // shieldbearers move every other turn
+      if (u.slow && u.actCount % 2 === 1) continue;
 
       const steps = u.speed || 1;
       const from = { path: u.path, row: u.row };
@@ -524,8 +594,9 @@ export class Battle {
       for (let s = 0; s < steps; s++) {
         const next = u.row - 1;
         if (next < 0) break;
-        if (this.unitAt(u.path, next, 'enemy')) break; // don't stack enemies
+        if (!this.hasSpace(u.path, next, 'enemy', u.size || 1)) break;
         u.row = next;
+        u.arrival = this.arrivalSeq++;
         moved = true;
         if (this.unitAt(u.path, next, 'player')) break; // engage defenders
       }
@@ -535,16 +606,22 @@ export class Battle {
     }
   }
 
+  // Phase 5 — waves surge in, stacked at the path mouths.
   spawnDueWave(events) {
     const wave = this.def.waves[this.wavesSpawned];
     if (!wave || wave.spawnAtEnd !== this.turn) return;
     this.wavesSpawned++;
     for (const s of wave.spawns) {
       const def = ENEMIES[s.enemy];
-      // Enter at the mouth of the path; slot back-to-front if crowded.
-      let row = ROWS - 1;
-      while (row > 0 && this.unitAt(s.path, row, 'enemy')) row--;
-      if (this.unitAt(s.path, row, 'enemy')) continue; // path mouth fully jammed
+      const size = def.size || 1;
+      let row = -1;
+      for (let r = ROWS - 1; r > 0; r--) {
+        if (this.hasSpace(s.path, r, 'enemy', size)) {
+          row = r;
+          break;
+        }
+      }
+      if (row < 0) continue; // the whole path is jammed with crusaders
       const unit = {
         uid: uidCounter++,
         side: 'enemy',
@@ -560,6 +637,8 @@ export class Battle {
         boss: !!def.boss,
         armor: def.armor || 0,
         ward: 0,
+        size,
+        arrival: this.arrivalSeq++,
         path: s.path,
         row,
         stunned: false,

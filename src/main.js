@@ -113,6 +113,7 @@ function cancelAction() {
   dragIsRite = false;
   tkUid = null;
   tkOptions = [];
+  hud.setBurnHint(false);
   if (mode !== 'busy' && mode !== 'menu') setMode('idle');
 }
 
@@ -148,9 +149,32 @@ function isContested(v) {
   return false;
 }
 
+// Formation slots for stacked tiles: front unit centred and forward, the
+// next two flanking behind. "Forward" faces the enemy for the cult and the
+// obelisk for crusaders.
+const STACK_SLOTS = {
+  1: [[0, 0]],
+  2: [[-0.42, 0.12], [0.42, -0.18]],
+  3: [[0, 0.2], [-0.56, -0.22], [0.56, -0.22]],
+};
+
 function viewTargetPos(v) {
   const p = board.unitPosition(v.path, v.row);
-  if (isContested(v)) p.z += v.group.userData.side === 'player' ? -0.58 : 0.58;
+  const side = v.group.userData.side;
+  const mates = [...unitViews.values()]
+    .filter((o) => o.path === v.path && o.row === v.row && o.group.userData.side === side)
+    .sort((a, b) => {
+      const aa = battle?.units.get(a.group.userData.uid)?.arrival ?? a.group.userData.uid;
+      const bb = battle?.units.get(b.group.userData.uid)?.arrival ?? b.group.userData.uid;
+      return aa - bb;
+    });
+  const slots = STACK_SLOTS[Math.min(mates.length, 3)] || STACK_SLOTS[3];
+  const idx = Math.min(Math.max(mates.indexOf(v), 0), slots.length - 1);
+  const [dx, dz] = slots[idx];
+  const dir = side === 'player' ? 1 : -1;
+  p.x += dx;
+  p.z += dz * dir;
+  if (isContested(v)) p.z += side === 'player' ? -0.5 : 0.5;
   return p;
 }
 
@@ -307,10 +331,19 @@ async function kinaetoSpeaks(lines) {
   cardHand.group.visible = true;
 }
 
-async function processEvents(events) {
-  setMode('busy');
-  for (const ev of events) {
+// Animate a single battle event. Batched clash events run through here
+// concurrently, so nothing in each case may assume it runs alone.
+async function animateEvent(ev) {
+  {
     switch (ev.type) {
+      case 'burn': {
+        hud.setImpetus(ev.impetus, RULES.impetusPerTurn);
+        cardHand.setAffordable(ev.impetus);
+        hud.setCounts(battle.deck.length, battle.discard.length);
+        hud.toast('The flames take it — +1 Impetus');
+        await sleep(200);
+        break;
+      }
       case 'turnStart': {
         hud.setTurn(ev.turn);
         hud.setImpetus(ev.impetus, ev.impetusMax);
@@ -514,20 +547,47 @@ async function processEvents(events) {
         }
         break;
       }
-      case 'win': {
-        await sleep(400);
-        await kinaetoSpeaks(DIALOGUE.victory);
-        hud.showScreen('victory', () => location.reload());
-        return;
-      }
-      case 'lose': {
-        world.addShake(0.6);
-        await sleep(500);
-        await kinaetoSpeaks(DIALOGUE.defeat);
-        hud.showScreen('defeat', () => location.reload());
-        return;
-      }
     }
+  }
+}
+
+async function processEvents(events) {
+  setMode('busy');
+  for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
+    if (ev.type === 'win') {
+      await sleep(400);
+      await kinaetoSpeaks(DIALOGUE.victory);
+      hud.showScreen('victory', () => location.reload());
+      return;
+    }
+    if (ev.type === 'lose') {
+      world.addShake(0.6);
+      await sleep(500);
+      await kinaetoSpeaks(DIALOGUE.defeat);
+      hud.showScreen('defeat', () => location.reload());
+      return;
+    }
+    if (ev.batch) {
+      // Skirmish pacing: everything in one tile's clash plays as a single
+      // overlapping brawl instead of one blow at a time.
+      const group = [ev];
+      while (i + 1 < events.length && events[i + 1].batch === ev.batch) group.push(events[++i]);
+      let delay = 0;
+      const running = group.map((e) => {
+        const d = delay;
+        delay += 100;
+        return (async () => {
+          await sleep(d);
+          await animateEvent(e);
+        })();
+      });
+      await Promise.all(running);
+      settleUnits();
+      await sleep(150);
+      continue;
+    }
+    await animateEvent(ev);
     await sleep(110);
   }
   refreshHud();
@@ -625,6 +685,7 @@ window.addEventListener('pointerdown', (e) => {
         dragIndex = card.userData.index;
         cardHand.setDragging(dragIndex, true);
         setMode('dragCard');
+        hud.setBurnHint(true);
         hud.setHint(def.power === 'beckon' ? 'Release above the battlefield to beckon' : 'Cast the rite on a unit');
         return;
       }
@@ -636,6 +697,7 @@ window.addEventListener('pointerdown', (e) => {
       dragIndex = card.userData.index;
       cardHand.setDragging(dragIndex, true);
       setMode('dragCard');
+      hud.setBurnHint(true);
       board.highlight(validPlacementCells(dragIndex), COLORS.kinaetic);
       document.body.style.cursor = 'grabbing';
       return;
@@ -685,6 +747,23 @@ window.addEventListener('pointerup', (e) => {
   if (mode !== 'dragCard') return;
   setPointer(e);
   document.body.style.cursor = 'default';
+  hud.setBurnHint(false);
+
+  // Any card released over the Impetus flames burns for +1.
+  if (pointer.x < -0.5 && pointer.y < -0.55) {
+    const result = battle.burnCard(dragIndex);
+    if (result.ok) {
+      cardHand.removeCardVisual(dragIndex);
+      dragIndex = -1;
+      dragIsRite = false;
+      setMode('busy');
+      processEvents(result.events);
+      return;
+    }
+    hud.toast(result.reason);
+    cancelAction();
+    return;
+  }
 
   if (dragIsRite) {
     const def = CARDS[cardHand.meshes[dragIndex]?.userData.key];

@@ -103,6 +103,14 @@ body {
   letter-spacing: 3px;
   color: var(--flame);
   text-shadow: 0 0 10px rgba(255, 138, 60, 0.7), 0 2px 4px #000;
+  transition: text-shadow 0.2s;
+}
+#impetus-label.burnable {
+  animation: burnpulse 0.9s infinite ease-in-out;
+}
+@keyframes burnpulse {
+  0%, 100% { text-shadow: 0 0 10px rgba(255, 138, 60, 0.7), 0 2px 4px #000; }
+  50% { text-shadow: 0 0 26px rgba(255, 150, 70, 1), 0 0 50px rgba(255, 120, 40, 0.7), 0 2px 4px #000; }
 }
 
 #hud-impetus { display: flex; gap: 3px; }

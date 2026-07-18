@@ -51,16 +51,25 @@ export class Hud {
     this.el.wave.textContent = text;
   }
 
-  // Impetus: a row of flames, burning while unspent.
+  // Impetus: a row of flames, burning while unspent. Burned cards can push
+  // the row past its base length.
   setImpetus(cur, max) {
     this.el.impetus.innerHTML = '';
-    for (let i = 0; i < max; i++) {
+    const total = Math.max(cur, max);
+    for (let i = 0; i < total; i++) {
       const f = document.createElement('span');
       f.className = 'flame' + (i < cur ? ' lit' : '');
       f.innerHTML =
         '<svg viewBox="0 0 24 32" width="22" height="30"><path d="M12 2 C15 8 20 11 20 19 A8 8 0 0 1 4 19 C4 13 8 10 9 6 C10 9 12 10 13 12 C14 8 12 5 12 2 Z"/></svg>';
       this.el.impetus.appendChild(f);
     }
+  }
+
+  // While a card is dragged the flames advertise the burn drop-zone.
+  setBurnHint(on) {
+    const label = document.getElementById('impetus-label');
+    label.textContent = on ? 'BURN HERE +1' : 'IMPETUS';
+    label.classList.toggle('burnable', on);
   }
 
   // Kinaetic focus: the eye is open while the turn's single use remains.
@@ -155,7 +164,8 @@ export class Hud {
         body: 'The church marches on your cave. Three paths lead to the obelisk that ties Kinaeto — hand, eye, and patience — to this plane. Draw your followers. Hold the gate.',
         btn: 'Begin the Vigil',
         extra: `<div class="rules">
-          <p><b>Impetus</b> 🔥 — flame energy that calls troops. A fixed measure each turn.</p>
+          <p><b>Impetus</b> 🔥 — flame energy that calls troops. A fixed measure each turn; drag any card into the flames to burn it for +1.</p>
+          <p><b>Ranks</b> — tiles hold up to 3 followers a side; allies never block allies. On contested tiles <i>everyone</i> strikes each turn, and victors surge onward the same turn.</p>
           <p><b>Kinaetic focus</b> — Kinaeto reaches through you once per turn: click a unit to Move or Push it, or cast a Rite card (Crush, Trip, Beckoning).</p>
           <p><b>✋ Open Palm</b> — holds its tile. <b>✊ Closed Fist</b> — advances; attacks foes on its tile. <b>🖐 Hand Sign</b> — casts down its path; can never be moved.</p>
           <p><b>Cards</b> — 5 to open, 3 each turn. Every follower acts the moment it lands.</p>
