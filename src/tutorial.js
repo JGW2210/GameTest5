@@ -43,7 +43,7 @@ export class Tutorial {
       {
         id: 'burn',
         line: DIALOGUE.tutBurn,
-        hint: 'Drag the SHROUDED WARDEN into the flames at the lower left',
+        hint: 'Drag the SHROUDED WARDEN into the BURN brazier on the left',
         action: 'burn',
         allow: {
           dragCard: (p) => p.key === 'warden',
@@ -62,7 +62,7 @@ export class Tutorial {
       {
         id: 'tk',
         line: DIALOGUE.tutTk,
-        hint: 'Click a crusader, then click a glowing tile to hurl it',
+        hint: 'Press a crusader and drag it onto a glowing tile',
         action: 'tkMove',
         allow: {
           tk: (p) => p.side === 'enemy',
@@ -100,7 +100,7 @@ export class Tutorial {
       {
         id: 'gaze',
         line: DIALOGUE.tutGaze,
-        hint: 'Place the EYE OF KINAETO on the watched (violet-lit) path',
+        hint: 'Burn a card for Impetus if you need it, then place the EYE OF KINAETO on the watched (violet-lit) path',
         action: 'placeCard',
         cells: () => {
           const cells = [];
@@ -110,15 +110,16 @@ export class Tutorial {
           return cells;
         },
         allow: {
-          dragCard: (p) => p.key === 'eye',
+          dragCard: () => true, // any card may feed the flames on the way
+          burn: (p) => p.key !== 'eye' && p.key !== 'beckon', // the lesson still needs these two
           placeCard: (p) => p.key === 'eye' && p.path === b.gazePath,
         },
-        deny: 'Kinaeto murmurs: the Eye belongs on the watched path.',
+        deny: 'Kinaeto murmurs: the Eye belongs on the watched path — burn what you must to afford it, but not the Eye or the Beckoning.',
       },
       {
         id: 'beckon',
         line: DIALOGUE.tutBeckon,
-        hint: 'Drag KINAETO’S BECKONING upward and release it above the battlefield',
+        hint: 'Drag KINAETO’S BECKONING to the USE circle (or release it above the battlefield)',
         action: 'rite',
         allow: {
           dragCard: (p) => p.key === 'beckon',
@@ -228,7 +229,7 @@ export class Tutorial {
 
   gate(action, payload = {}) {
     if (!this.active) return { ok: true };
-    if (this.cinematic || this.doomStarted) return { ok: false, reason: 'Kinaeto is speaking — listen.' };
+    if (this.cinematic || this.doomStarted) return { ok: false, reason: null }; // silent — his dialogue is on screen
     const st = this.current();
     if (!st || st.allow === 'all') return { ok: true };
     const rule = st.allow[action];

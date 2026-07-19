@@ -7,7 +7,7 @@ import * as THREE from 'three';
 import { World } from '#game/scene.js';
 import { Board } from '#game/board.js';
 import { Kinaeto } from '#game/kinaeto.js';
-import { CardHand, clearCardTextures, setCardSource } from '#game/cards3d.js';
+import { CardHand, clearCardTextures, setCardSource, cardFaceDataURL } from '#game/cards3d.js';
 import { Hud, PATH_NAMES } from '#game/hud.js';
 import { Battle } from '#game/battle.js';
 import { Tweens, Ease, sleep, floatText } from '#game/effects.js';
@@ -35,8 +35,9 @@ let dragIndex = -1;
 let dragIsRite = false; // dragged card is a Kinaetic Rite (targets units)
 let tkUid = null; // unit grabbed for a telekinetic move
 let tkOptions = []; // {path,row,power} tiles Kinaeto can carry it to
+let unitPress = null; // {uid, x, y} — pending click-vs-drag on a unit
 let warnCount = 0;
-let warnLines = []; // per-battle Kinaeto lines for wave warnings
+let warnLines = []; // per-battle Kinaeto lines for wave warnings (null = banner only)
 
 const unitViews = new Map(); // uid -> {group, hp, maxHp, path, row, boss}
 
@@ -85,6 +86,43 @@ function tutorialGate(action, payload) {
   return tutorial && tutorial.active ? tutorial.gate(action, payload) : { ok: true };
 }
 
+// A denied gate with a null reason is a silent denial (cinematics).
+function gateAllows(action, payload) {
+  const g = tutorialGate(action, payload);
+  if (!g.ok && g.reason) hud.toast(g.reason);
+  return g.ok;
+}
+
+// ---------------------------------------------------------------------------
+// unit inspection: intent words on hover, the unit's card on click
+
+const INTENT_TEXT = {
+  advance: 'ADVANCE — will march toward the obelisk',
+  strike: 'STRIKE — locked in melee; will attack the faithful on its tile',
+  volley: 'VOLLEY — will shoot the nearest cultist in range',
+  siege: 'SIEGE — will batter the obelisk itself',
+  ability: 'ABILITY — will unleash something holy and terrible',
+  wait: 'WAIT — braced or blocked; will not advance this turn',
+  dazed: 'DAZED — stunned; will skip its next action',
+};
+
+function unitTipText(unit) {
+  if (unit.side === 'enemy') {
+    const intent = INTENT_TEXT[unit.intent] || 'gathering itself';
+    return `${unit.name} · ${intent} · click to inspect`;
+  }
+  const grab = battle.canTkGrab(unit.uid).ok ? ' · drag to move' : '';
+  return `${unit.name} · click to inspect${grab}`;
+}
+
+function inspectUnit(uid) {
+  const u = battle.units.get(uid);
+  if (!u) return;
+  hud.hideUnitTip();
+  const intent = u.side === 'enemy' && INTENT_TEXT[u.intent] ? `Intent: ${INTENT_TEXT[u.intent]}` : '';
+  hud.showInspect(cardFaceDataURL(u.key, u.side === 'enemy'), intent);
+}
+
 function validPlacementCells(handIndex) {
   const key = battle.hand[handIndex];
   const cells = [];
@@ -109,31 +147,49 @@ function refreshHud() {
   cardHand.setAffordable(battle.impetus);
 }
 
+// Whether the USE zone should read as live for the card being dragged.
+function dragUseEnabled() {
+  const key = cardHand.meshes[dragIndex]?.userData.key;
+  const def = key && battle && battle.cards[key];
+  if (!def) return false;
+  if (def.type === 'tk') return battle.kinaeticAvailable();
+  return def.cost <= battle.impetus;
+}
+
 function setMode(next) {
   mode = next;
   board.clearHighlights();
   ghost.visible = false;
   if (next !== 'idle') world.glanceTarget = 0;
   const hints = {
-    idle: 'Drag a card to a glowing tile · click a unit to let Kinaeto move it',
-    dragCard: dragIsRite ? 'Cast the rite on a unit' : 'Drop the follower on a glowing tile',
-    tkSelect: 'Choose where the hand carries it — right-click to cancel',
+    idle: 'Drag a card to a tile or the USE circle · click a unit to inspect · drag one to move it',
+    dragCard: dragIsRite
+      ? 'Drop it on a unit or the USE circle · the flames take any card'
+      : 'Drop it on a glowing tile or the USE circle · the flames take any card',
+    placeTarget: 'Now choose a glowing tile — right-click to cancel',
+    castTarget: 'Now choose a target — right-click to cancel',
+    tkSelect: 'Drag to a glowing tile and release',
     busy: '',
     menu: '',
   };
   hud.setHint(hints[next] || '');
   hud.setEndTurnEnabled(next === 'idle');
+  if (next === 'dragCard') hud.setDropZones('drag', dragUseEnabled());
+  else if (next === 'placeTarget' || next === 'castTarget') hud.setDropZones('placing');
+  else hud.setDropZones(null);
   // the tutorial re-asserts its own hint and target markers
   if (next === 'idle' && tutorial && tutorial.active && !tutorial.cinematic) tutorial.applyUI();
 }
 
 function cancelAction() {
   if (mode === 'dragCard') cardHand.setDragging(dragIndex, false);
+  cardHand.setDocked(-1);
   dragIndex = -1;
   dragIsRite = false;
   tkUid = null;
   tkOptions = [];
-  hud.setBurnHint(false);
+  unitPress = null;
+  hud.hideUnitTip();
   if (mode !== 'busy' && mode !== 'menu') setMode('idle');
 }
 
@@ -413,6 +469,14 @@ async function animateEvent(ev) {
         }
         break;
       }
+      case 'sap': {
+        // the Cinder Chorus sings the fight out of them
+        const v = unitViews.get(ev.uid);
+        if (v) {
+          floatText(world.scene, tweens, v.group.position.clone().add(new THREE.Vector3(0, 1.9, 0)), '−1 ⚔', '#9fb8e8');
+        }
+        break;
+      }
       case 'emberBurst': {
         const v = unitViews.get(ev.targetUid);
         if (v) {
@@ -453,7 +517,10 @@ async function animateEvent(ev) {
           ev.isBoss ? `⚜ THE SAINT-COMMANDER COMES — ${names} PATH ⚜` : `THE CRUSADE STIRS — ${names} PATH${ev.paths.length > 1 ? 'S' : ''}`,
           ev.isBoss ? 'boss' : 'warn'
         );
-        const line = warnLines[Math.min(warnCount, warnLines.length - 1)];
+        // A null entry means this warning was already folded into an earlier
+        // dialogue (battle one's first warn rides along with the intro) — the
+        // banner and path sigils carry it, no second camera trip to Kinaeto.
+        const line = warnLines[warnCount];
         warnCount++;
         if (line) await kinaetoSpeaks([line]);
         break;
@@ -653,6 +720,80 @@ async function processEvents(events) {
 }
 
 // ---------------------------------------------------------------------------
+// executing card actions (shared by direct drops and the USE-zone flow)
+
+function executePlace(path, row) {
+  const result = battle.playCard(dragIndex, path, row);
+  if (!result.ok) {
+    hud.toast(result.reason);
+    cancelAction();
+    return;
+  }
+  cardHand.removeCardVisual(dragIndex);
+  dragIndex = -1;
+  dragIsRite = false;
+  setMode('busy');
+  tutorial?.noteAction('placeCard');
+  processEvents(result.events);
+}
+
+function executeRite(targetUid) {
+  const result = battle.playTkCard(dragIndex, targetUid);
+  if (!result.ok) {
+    hud.toast(result.reason);
+    cancelAction();
+    return;
+  }
+  cardHand.removeCardVisual(dragIndex);
+  dragIndex = -1;
+  dragIsRite = false;
+  setMode('busy');
+  tutorial?.noteAction('rite');
+  processEvents(result.events);
+}
+
+function executeBurn() {
+  const result = battle.burnCard(dragIndex);
+  if (!result.ok) {
+    hud.toast(result.reason);
+    cancelAction();
+    return;
+  }
+  cardHand.removeCardVisual(dragIndex);
+  dragIndex = -1;
+  dragIsRite = false;
+  setMode('busy');
+  tutorial?.noteAction('burn');
+  processEvents(result.events);
+}
+
+// A pressed unit becomes a telekinetic drag once the pointer travels far
+// enough; a press released in place is an inspection click instead.
+function tryStartUnitDrag() {
+  const press = unitPress;
+  unitPress = null;
+  const u = battle.units.get(press.uid);
+  if (!u) return;
+  if (!gateAllows('tk', { uid: press.uid, side: u.side })) return;
+  const check = battle.canTkGrab(press.uid);
+  if (!check.ok) {
+    hud.toast(check.reason);
+    return;
+  }
+  tkOptions = battle.tkMoveOptions(press.uid);
+  if (tkOptions.length === 0) {
+    hud.toast('No tile within Kinaeto’s reach');
+    return;
+  }
+  tkUid = press.uid;
+  hud.hideUnitTip();
+  setMode('tkSelect');
+  // adjacent tiles (Move) glow teal; the far throws (Push) glow violet
+  board.highlight(tkOptions.filter((o) => o.power === 'move'), COLORS.eldritch);
+  board.highlight(tkOptions.filter((o) => o.power === 'push'), COLORS.kinaetic);
+}
+
+// ---------------------------------------------------------------------------
 // input
 
 window.addEventListener('pointermove', (e) => {
@@ -666,37 +807,65 @@ window.addEventListener('pointermove', (e) => {
   // Vertical glance: cursor near the hand peeks at the path mouths and their
   // warning sigils; cursor near the top frames the full obelisk.
   if (mode === 'idle' && world.sideTarget === 0) {
-    // The downward glance bottoms out just ABOVE the card fan (~ -0.58), so
-    // by the time the cursor reaches the cards the view is already settled
-    // and a lifted card only covers what it is actually touching.
     if (pointer.y < -0.3) world.glanceTarget = -Math.min(1, (-pointer.y - 0.3) / 0.2);
     else if (pointer.y > 0.45) world.glanceTarget = Math.min(1, (pointer.y - 0.45) / 0.35);
     else world.glanceTarget = 0;
   } else {
     world.glanceTarget = 0;
   }
+
   if (mode === 'idle') {
-    // Hover lives near the hand: pick by fan slot, and let the lifted card
-    // keep hover only while the cursor stays in the lower band — wandering
-    // up to the board always drops it, so it never blocks the view.
-    let hoverIdx = cardHand.slotIndexAt();
-    if (hoverIdx === -1 && pointer.y < -0.35 && cardHand.hoverIndex >= 0) {
-      const card = pickCard();
-      if (card && card.userData.index === cardHand.hoverIndex) hoverIdx = card.userData.index;
+    // a pressed unit turns into a telekinetic drag once it travels far enough
+    if (unitPress) {
+      const dx = e.clientX - unitPress.x;
+      const dy = e.clientY - unitPress.y;
+      if (dx * dx + dy * dy > 196) tryStartUnitDrag();
+      return;
+    }
+    // The fan's slot band is generous, but units near the path mouths share
+    // that space — a unit under the cursor outranks a slot the raycast
+    // doesn't confirm.
+    const slot = cardHand.slotIndexAt();
+    let hoverIdx = -1;
+    let unitObj = null;
+    if (slot >= 0) {
+      const picked = pickCard();
+      if (picked) hoverIdx = picked.userData.index;
+      else {
+        unitObj = hud.inspectOpen ? null : pickUnit();
+        if (!unitObj) hoverIdx = slot;
+      }
+    } else {
+      unitObj = hud.inspectOpen ? null : pickUnit();
     }
     cardHand.setHover(hoverIdx);
     if (hoverIdx >= 0) {
+      hud.hideUnitTip();
       document.body.style.cursor = 'grab';
+      return;
+    }
+    // no card underfoot — units explain themselves on hover
+    if (unitObj) {
+      const u = battle.units.get(unitObj.userData.uid);
+      if (u) hud.showUnitTip(unitTipText(u), e.clientX, e.clientY);
+      document.body.style.cursor = 'pointer';
     } else {
-      const unit = pickUnit();
-      document.body.style.cursor = unit && battle.canTkGrab(unit.userData.uid).ok ? 'pointer' : 'default';
+      hud.hideUnitTip();
+      document.body.style.cursor = 'default';
     }
   } else if (mode === 'dragCard') {
     board.clearHover();
     ghost.visible = false;
+    const zone = hud.zoneAt(e.clientX, e.clientY);
+    hud.setZoneHot('use', zone === 'use');
+    hud.setZoneHot('burn', zone === 'burn');
+    if (zone) {
+      document.body.style.cursor = 'grabbing';
+      return;
+    }
     if (dragIsRite) {
       const unit = pickUnit();
-      document.body.style.cursor = unit ? 'pointer' : 'default';
+      document.body.style.cursor = unit ? 'pointer' : 'grabbing';
       if (unit) {
         const v = unitViews.get(unit.userData.uid);
         if (v) {
@@ -710,6 +879,30 @@ window.addEventListener('pointermove', (e) => {
       if (tile && battle.canPlaceCard(dragIndex, tile.userData.path, tile.userData.row).ok) {
         board.hoverTile(tile);
         ghost.position.set(tile.position.x, tile.position.y + 0.2, tile.position.z);
+        ghost.visible = true;
+      }
+    }
+  } else if (mode === 'placeTarget') {
+    board.clearHover();
+    ghost.visible = false;
+    const tile = pickTile();
+    if (tile && battle.canPlaceCard(dragIndex, tile.userData.path, tile.userData.row).ok) {
+      board.hoverTile(tile);
+      ghost.position.set(tile.position.x, tile.position.y + 0.2, tile.position.z);
+      ghost.visible = true;
+      document.body.style.cursor = 'pointer';
+    } else {
+      document.body.style.cursor = 'default';
+    }
+  } else if (mode === 'castTarget') {
+    const unit = pickUnit();
+    ghost.visible = false;
+    document.body.style.cursor = unit ? 'pointer' : 'default';
+    if (unit) {
+      const v = unitViews.get(unit.userData.uid);
+      if (v) {
+        ghost.position.copy(v.group.position);
+        ghost.position.y += 0.15;
         ghost.visible = true;
       }
     }
@@ -728,84 +921,90 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerdown', (e) => {
   if (e.button === 2) return;
   setPointer(e);
+  // While Kinaeto is speaking, any click just advances his dialogue — the
+  // world (and the hidden card fan) can't be poked at behind his words.
+  // (A click on the dialogue itself already advances via its own handler.)
+  if (document.body.classList.contains('dialogue-open')) {
+    if (!(e.target && e.target.closest && e.target.closest('#dialogue'))) hud.advanceDialogue();
+    return;
+  }
   if (state === 'hub') {
     hub.onPointerDown(raycaster);
     return;
   }
   if (!battle || battle.over) return;
+  if (hud.inspectOpen) return; // the inspector's own click closes it
 
   if (mode === 'idle') {
+    // Any card may be picked up — even one you cannot afford. Unplayable
+    // cards can always feed the flames. A unit under the cursor outranks a
+    // slot-band guess the card raycast doesn't confirm.
     const slot = cardHand.slotIndexAt();
-    let card = slot >= 0 ? cardHand.meshes[slot] : null;
-    if (!card && pointer.y < -0.35 && cardHand.hoverIndex >= 0) {
+    let card = null;
+    if (slot >= 0) {
       const picked = pickCard();
-      if (picked && picked.userData.index === cardHand.hoverIndex) card = picked;
+      if (picked) card = cardHand.meshes[picked.userData.index];
+      else if (!pickUnit()) card = cardHand.meshes[slot];
     }
     if (card) {
-      const gateCheck = tutorialGate('dragCard', { key: card.userData.key });
-      if (!gateCheck.ok) {
-        hud.toast(gateCheck.reason);
-        return;
-      }
+      if (!gateAllows('dragCard', { key: card.userData.key })) return;
       const def = battle.cards[card.userData.key];
-      if (def.type === 'tk') {
-        if (!battle.kinaeticAvailable()) {
-          hud.toast('Kinaetic focus already spent this turn');
-          return;
-        }
-        dragIsRite = true;
-        dragIndex = card.userData.index;
-        cardHand.setDragging(dragIndex, true);
-        setMode('dragCard');
-        hud.setBurnHint(true);
-        hud.setHint(def.power === 'beckon' ? 'Release above the battlefield to beckon' : 'Cast the rite on a unit');
-        return;
-      }
-      if (!card.userData.affordable) {
-        hud.toast('Not enough Impetus');
-        return;
-      }
-      dragIsRite = false;
+      dragIsRite = def.type === 'tk';
       dragIndex = card.userData.index;
       cardHand.setDragging(dragIndex, true);
+      hud.hideUnitTip();
       setMode('dragCard');
-      hud.setBurnHint(true);
-      board.highlight(validPlacementCells(dragIndex), COLORS.kinaetic);
+      if (!dragIsRite) board.highlight(validPlacementCells(dragIndex), COLORS.kinaetic);
       document.body.style.cursor = 'grabbing';
       return;
     }
-    // No card under the pointer — try grabbing a unit with Kinaeto's hand.
+    // a press on a unit: click = inspect, drag = telekinesis
+    const unitObj = pickUnit();
+    if (unitObj) unitPress = { uid: unitObj.userData.uid, x: e.clientX, y: e.clientY };
+    return;
+  }
+
+  if (mode === 'placeTarget') {
+    const tile = pickTile();
+    if (tile) {
+      const { path, row } = tile.userData;
+      const key = cardHand.meshes[dragIndex]?.userData.key;
+      if (!gateAllows('placeCard', { key, path, row })) return;
+      const check = battle.canPlaceCard(dragIndex, path, row);
+      if (check.ok) {
+        executePlace(path, row);
+      } else {
+        hud.toast(check.reason);
+      }
+      return;
+    }
+    cancelAction();
+    return;
+  }
+
+  if (mode === 'castTarget') {
     const unitObj = pickUnit();
     if (unitObj) {
-      const uid = unitObj.userData.uid;
-      const gateCheck = tutorialGate('tk', { uid, side: battle.units.get(uid)?.side });
-      if (!gateCheck.ok) {
-        hud.toast(gateCheck.reason);
-        return;
-      }
-      const check = battle.canTkGrab(uid);
-      if (!check.ok) {
-        hud.toast(check.reason);
-        return;
-      }
-      tkOptions = battle.tkMoveOptions(uid);
-      if (tkOptions.length === 0) {
-        hud.toast('No tile within Kinaeto’s reach');
-        return;
-      }
-      tkUid = uid;
-      setMode('tkSelect');
-      // adjacent tiles (Move) glow teal; the far throws (Push) glow violet
-      board.highlight(tkOptions.filter((o) => o.power === 'move'), COLORS.eldritch);
-      board.highlight(tkOptions.filter((o) => o.power === 'push'), COLORS.kinaetic);
+      const key = cardHand.meshes[dragIndex]?.userData.key;
+      const targetSide = battle.units.get(unitObj.userData.uid)?.side;
+      if (!gateAllows('rite', { key, targetSide })) return;
+      executeRite(unitObj.userData.uid);
+      return;
     }
-  } else if (mode === 'tkSelect') {
+    cancelAction();
+  }
+});
+
+window.addEventListener('pointerup', (e) => {
+  if (state === 'hub' || !battle) return;
+  setPointer(e);
+
+  // a telekinetic drag resolves where it lets go
+  if (mode === 'tkSelect' && tkUid !== null) {
     const tile = pickTile();
+    document.body.style.cursor = 'default';
     if (tile && tkOptions.some((d) => d.path === tile.userData.path && d.row === tile.userData.row)) {
-      const result = battle.applyTkMove(tkUid, {
-        path: tile.userData.path,
-        row: tile.userData.row,
-      });
+      const result = battle.applyTkMove(tkUid, { path: tile.userData.path, row: tile.userData.row });
       tkUid = null;
       tkOptions = [];
       if (result.ok) {
@@ -818,84 +1017,87 @@ window.addEventListener('pointerdown', (e) => {
     } else {
       cancelAction();
     }
-  }
-});
-
-window.addEventListener('pointerup', (e) => {
-  if (mode !== 'dragCard') return;
-  setPointer(e);
-  document.body.style.cursor = 'default';
-  hud.setBurnHint(false);
-
-  // Any card released over the Impetus flames burns for +1.
-  if (pointer.x < -0.5 && pointer.y < -0.55) {
-    const key = cardHand.meshes[dragIndex]?.userData.key;
-    const gateCheck = tutorialGate('burn', { key });
-    if (!gateCheck.ok) {
-      hud.toast(gateCheck.reason);
-      cancelAction();
-      return;
-    }
-    const result = battle.burnCard(dragIndex);
-    if (result.ok) {
-      cardHand.removeCardVisual(dragIndex);
-      dragIndex = -1;
-      dragIsRite = false;
-      setMode('busy');
-      tutorial?.noteAction('burn');
-      processEvents(result.events);
-      return;
-    }
-    hud.toast(result.reason);
-    cancelAction();
     return;
   }
 
-  if (dragIsRite) {
-    const key = cardHand.meshes[dragIndex]?.userData.key;
-    const def = key && battle.cards[key];
-    if (def && def.power === 'beckon') {
-      // released anywhere above the hand
-      if (pointer.y > -0.45) {
-        const gateCheck = tutorialGate('rite', { key });
-        if (!gateCheck.ok) {
-          hud.toast(gateCheck.reason);
+  // a unit pressed and released in place is an inspection click
+  if (unitPress) {
+    const uid = unitPress.uid;
+    unitPress = null;
+    if (mode === 'idle' && !hud.inspectOpen) inspectUnit(uid);
+    return;
+  }
+
+  if (mode !== 'dragCard') return;
+  document.body.style.cursor = 'default';
+
+  const key = cardHand.meshes[dragIndex]?.userData.key;
+  const def = key && battle.cards[key];
+  const zone = hud.zoneAt(e.clientX, e.clientY);
+
+  // the BURN brazier takes any card, playable or not
+  if (zone === 'burn') {
+    if (!gateAllows('burn', { key })) {
+      cancelAction();
+      return;
+    }
+    executeBurn();
+    return;
+  }
+
+  // the USE circle: dock the card, then pick its target at leisure
+  if (zone === 'use') {
+    if (dragIsRite) {
+      if (!battle.kinaeticAvailable()) {
+        hud.toast('Kinaetic focus already spent this turn — burn it instead');
+        cancelAction();
+        return;
+      }
+      if (def.power === 'beckon') {
+        if (!gateAllows('rite', { key })) {
           cancelAction();
           return;
         }
-        const result = battle.playTkCard(dragIndex);
-        if (result.ok) {
-          cardHand.removeCardVisual(dragIndex);
-          dragIndex = -1;
-          dragIsRite = false;
-          setMode('busy');
-          tutorial?.noteAction('rite');
-          processEvents(result.events);
+        executeRite();
+        return;
+      }
+      cardHand.setDocked(dragIndex);
+      setMode('castTarget');
+      return;
+    }
+    const cells = validPlacementCells(dragIndex);
+    if (!cells.length) {
+      hud.toast(def && def.cost > battle.impetus ? 'Not enough Impetus — burn a card for more' : 'No tile can take it');
+      cancelAction();
+      return;
+    }
+    cardHand.setDocked(dragIndex);
+    setMode('placeTarget');
+    board.highlight(cells, COLORS.kinaetic);
+    return;
+  }
+
+  // direct drops still work: straight onto a tile, a unit, or the open air
+  if (dragIsRite) {
+    if (def && def.power === 'beckon') {
+      if (pointer.y > -0.45) {
+        if (!gateAllows('rite', { key })) {
+          cancelAction();
           return;
         }
-        hud.toast(result.reason);
+        executeRite();
+        return;
       }
     } else {
       const unitObj = pickUnit();
       if (unitObj) {
         const targetSide = battle.units.get(unitObj.userData.uid)?.side;
-        const gateCheck = tutorialGate('rite', { key, targetSide });
-        if (!gateCheck.ok) {
-          hud.toast(gateCheck.reason);
+        if (!gateAllows('rite', { key, targetSide })) {
           cancelAction();
           return;
         }
-        const result = battle.playTkCard(dragIndex, unitObj.userData.uid);
-        if (result.ok) {
-          cardHand.removeCardVisual(dragIndex);
-          dragIndex = -1;
-          dragIsRite = false;
-          setMode('busy');
-          tutorial?.noteAction('rite');
-          processEvents(result.events);
-          return;
-        }
-        hud.toast(result.reason);
+        executeRite(unitObj.userData.uid);
+        return;
       }
     }
     cancelAction();
@@ -905,21 +1107,13 @@ window.addEventListener('pointerup', (e) => {
   const tile = pickTile();
   if (tile) {
     const { path, row } = tile.userData;
-    const key = cardHand.meshes[dragIndex]?.userData.key;
-    const gateCheck = tutorialGate('placeCard', { key, path, row });
-    if (!gateCheck.ok) {
-      hud.toast(gateCheck.reason);
+    if (!gateAllows('placeCard', { key, path, row })) {
       cancelAction();
       return;
     }
     const check = battle.canPlaceCard(dragIndex, path, row);
     if (check.ok) {
-      const result = battle.playCard(dragIndex, path, row);
-      cardHand.removeCardVisual(dragIndex);
-      dragIndex = -1;
-      setMode('busy');
-      tutorial?.noteAction('placeCard');
-      processEvents(result.events);
+      executePlace(path, row);
       return;
     }
     hud.toast(check.reason);
@@ -977,12 +1171,13 @@ window.addEventListener('pointerup', (e) => {
 });
 
 hud.onEndTurn = () => {
-  if (mode !== 'idle') return;
-  const gateCheck = tutorialGate('endTurn', {});
-  if (!gateCheck.ok) {
-    hud.toast(gateCheck.reason);
+  // the anywhere-click-advances rule applies to the button too
+  if (document.body.classList.contains('dialogue-open')) {
+    hud.advanceDialogue();
     return;
   }
+  if (mode !== 'idle') return;
+  if (!gateAllows('endTurn', {})) return;
   cancelAction();
   tutorial?.noteAction('endTurn');
   const events = battle.endTurn();
@@ -1067,6 +1262,8 @@ function enterHub() {
   tutorial = null;
   clearUnits();
   setMode('menu');
+  // panels draw card faces — make sure the runic font is in for them
+  ensureFontAndCarvings();
   hub.enter();
 }
 
@@ -1087,11 +1284,14 @@ async function startBattleOne() {
   await ensureFontAndCarvings();
 
   battle = new Battle(BATTLE_ONE, { deck: metaState.deck.slice(), cards });
-  warnLines = [DIALOGUE.wave1Warn, DIALOGUE.wave2Warn, DIALOGUE.wave3Warn, DIALOGUE.bossWarn];
+  // The first wave's warning rides along with the intro — one visit to
+  // Kinaeto, not two back-to-back camera trips. The null entry makes the
+  // warn event itself banner-only.
+  warnLines = [null, DIALOGUE.wave2Warn, DIALOGUE.wave3Warn, DIALOGUE.bossWarn];
   warnCount = 0;
   refreshHud();
   setMode('busy');
-  await kinaetoSpeaks(DIALOGUE.intro);
+  await kinaetoSpeaks([...DIALOGUE.intro, DIALOGUE.wave1Warn]);
   await processEvents(battle.start());
 }
 
@@ -1119,6 +1319,7 @@ window.__game = {
   timeScale: 1,
   get battle() { return battle; },
   get mode() { return mode; },
+  get unitPress() { return unitPress; },
   get state() { return state; },
   get tutorial() { return tutorial; },
   hub,
@@ -1127,7 +1328,7 @@ window.__game = {
   world,
   board,
   cardHand,
-  _test: { addUnitView, settleUnits, viewTargetPos, isContested, startTutorial, enterHub, startBattleOne },
+  _test: { addUnitView, settleUnits, viewTargetPos, isContested, startTutorial, enterHub, startBattleOne, pickCard, pickUnit, raycaster },
 };
 
 const clock = new THREE.Clock();

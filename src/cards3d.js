@@ -2,7 +2,7 @@
 // the bottom of the view. Faces are canvas textures drawn per card type.
 
 import * as THREE from 'three';
-import { CARDS } from '#game/data.js';
+import { CARDS, ENEMIES } from '#game/data.js';
 
 const TYPE_COLORS = {
   fist: '#c8452f',
@@ -102,6 +102,16 @@ export function drawGlyph(ctx, type, cx, cy, s, color) {
     ctx.beginPath();
     ctx.arc(0, 0.45, 0.75, Math.PI * 0.15, Math.PI * 0.85);
     ctx.stroke();
+  } else if (type === 'crusader') {
+    // the church's cross, ringed
+    ctx.lineWidth = 0.13;
+    ctx.beginPath();
+    ctx.arc(0, 0, 0.85, 0, Math.PI * 2);
+    ctx.stroke();
+    roundRect(ctx, -0.14, -0.62, 0.28, 1.24, 0.08);
+    ctx.fill();
+    roundRect(ctx, -0.46, -0.3, 0.92, 0.28, 0.08);
+    ctx.fill();
   } else if (type === 'beckon') {
     // the eye, open
     ctx.lineWidth = 0.14;
@@ -286,6 +296,112 @@ export function cardTexture(key) {
   return tex;
 }
 
+// ---- enemy card faces (for unit inspection) --------------------------------
+
+const enemyTextureCache = new Map();
+
+export function enemyCardTexture(key) {
+  if (enemyTextureCache.has(key)) return enemyTextureCache.get(key);
+  const def = ENEMIES[key];
+  const accent = def.boss ? '#ffd970' : '#d8a83c';
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 360;
+  const ctx = c.getContext('2d');
+
+  const grad = ctx.createRadialGradient(128, 150, 40, 128, 190, 280);
+  grad.addColorStop(0, '#241c10');
+  grad.addColorStop(0.75, '#100b06');
+  grad.addColorStop(1, 'rgba(10,7,4,0.0)');
+  roundRect(ctx, 4, 4, 248, 352, 22);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 16;
+  ctx.strokeStyle = `${accent}55`;
+  ctx.lineWidth = 2;
+  roundRect(ctx, 8, 8, 240, 344, 20);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 12;
+  drawGlyph(ctx, 'crusader', 34, 34, 16, accent);
+  ctx.restore();
+
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 10;
+  ctx.fillStyle = '#f2ead6';
+  ctx.font = `19px ${RUNIC}`;
+  wrapText(ctx, def.name, 148, 30, 178, 22);
+  ctx.restore();
+
+  let tag = def.boss ? 'THE CRUSADE • COMMANDER' : 'THE CRUSADE';
+  if (def.kind === 'ranged') tag += ` • RNG ${def.range}`;
+  if (def.armor) tag += ` • ARMOR ${def.armor}`;
+  ctx.save();
+  ctx.fillStyle = accent;
+  ctx.font = `13px ${RUNIC}`;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 8;
+  ctx.fillText(tag, 128, 78);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.13;
+  ctx.beginPath();
+  ctx.arc(128, 158, 60, 0, Math.PI * 2);
+  ctx.fillStyle = accent;
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 18;
+  drawGlyph(ctx, 'crusader', 128, 158, 44, accent);
+  ctx.restore();
+
+  ctx.fillStyle = '#e0d4c0';
+  ctx.font = '14px Georgia, serif';
+  wrapText(ctx, def.desc, 128, 244, 208, 17);
+  if (def.flavor) {
+    ctx.fillStyle = 'rgba(220,200,175,0.5)';
+    ctx.font = 'italic 12px Georgia, serif';
+    wrapText(ctx, def.flavor, 128, 300, 208, 14);
+  }
+
+  ctx.font = `bold 21px ${RUNIC}`;
+  ctx.save();
+  ctx.shadowBlur = 10;
+  ctx.textAlign = 'left';
+  ctx.shadowColor = '#e8975c';
+  ctx.fillStyle = '#e8975c';
+  ctx.fillText(`⚔ ${def.atk}`, 26, 336);
+  ctx.textAlign = 'right';
+  ctx.shadowColor = '#6be08a';
+  ctx.fillStyle = '#6be08a';
+  ctx.fillText(`♥ ${def.hp}`, 230, 336);
+  ctx.restore();
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  enemyTextureCache.set(key, tex);
+  return tex;
+}
+
+// PNG data URL of a card face — used by the hub's card grid and the in-battle
+// unit inspector, which live in the DOM rather than the 3D scene.
+export function cardFaceDataURL(key, isEnemy = false) {
+  const tex = isEnemy ? enemyCardTexture(key) : cardTexture(key);
+  return tex.image.toDataURL();
+}
+
 const CARD_W = 0.66;
 const CARD_H = 0.93;
 const HAND_Z = -4;
@@ -303,6 +419,7 @@ export class CardHand {
     this.meshes = [];
     this.hoverIndex = -1;
     this.dragIndex = -1;
+    this.dockIndex = -1; // card parked at the USE zone while a target is chosen
     this.geo = new THREE.PlaneGeometry(CARD_W, CARD_H);
     this.pointer = { x: 0, y: -1.6 }; // camera-space coords on the hand plane
     this.pointerVel = { x: 0, y: 0 };
@@ -368,6 +485,12 @@ export class CardHand {
     this.dragIndex = dragging ? index : -1;
   }
 
+  // Park a card at the USE zone (right edge) while the player picks its target.
+  setDocked(index) {
+    this.dockIndex = index;
+    if (index >= 0) this.dragIndex = -1;
+  }
+
   removeCardVisual(index) {
     const m = this.meshes[index];
     if (!m) return;
@@ -377,6 +500,7 @@ export class CardHand {
     this.meshes.forEach((mm, i) => (mm.userData.index = i));
     this.hoverIndex = -1;
     this.dragIndex = -1;
+    this.dockIndex = -1;
   }
 
   update(dt) {
@@ -396,18 +520,33 @@ export class CardHand {
     const n = this.meshes.length;
     const spread = Math.min(0.6, 4.2 / Math.max(n, 1));
     const k = 1 - Math.exp(-dt * 11);
+    const halfH = Math.tan((this.camera.fov * Math.PI) / 360) * Math.abs(HAND_Z);
+    const halfW = halfH * this.camera.aspect;
 
     this.meshes.forEach((m, i) => {
       const off = i - (n - 1) / 2;
-      const hovered = i === this.hoverIndex && this.dragIndex === -1;
+      const hovered = i === this.hoverIndex && this.dragIndex === -1 && this.dockIndex === -1;
       const dragged = i === this.dragIndex;
+      const docked = i === this.dockIndex;
 
       let tx, ty, tz, rx, ry, rz, ts;
-      if (dragged) {
+      if (docked) {
+        // parked at the USE zone while the player chooses a target
+        tx = halfW * 0.74;
+        ty = -halfH * 0.1;
+        tz = HAND_Z + 0.55;
+        ts = 1.1;
+        rx = 0;
+        ry = -0.18;
+        rz = 0;
+      } else if (dragged) {
         tx = this.pointer.x;
         ty = this.pointer.y;
         tz = HAND_Z + 0.6;
-        ts = 0.62;
+        // Picked up at the hand the card enlarges for reading; carried up
+        // toward the board it shrinks out of the way.
+        const lift = clamp((this.pointer.y + halfH * 0.94) / (halfH * 0.85), 0, 1);
+        ts = 1.5 - lift * 0.88;
         // sway against the direction of travel
         ry = clamp(this.pointerVel.x * 0.06, -0.5, 0.5);
         rx = clamp(-this.pointerVel.y * 0.05, -0.4, 0.4);
@@ -421,15 +560,14 @@ export class CardHand {
         rz = -off * 0.085;
         ts = 1;
         if (hovered) {
-          ty += 0.78;
-          tz += 0.45;
-          ts = 1.6;
-          rz = 0;
-          // tilt toward wherever the cursor sits on the card face
-          const nx = clamp((this.pointer.x - tx) / ((CARD_W * ts) / 2), -1, 1);
-          const nyy = clamp((this.pointer.y - ty) / ((CARD_H * ts) / 2), -1, 1);
-          ry = nx * 0.34;
-          rx = -nyy * 0.26;
+          // a filing-cabinet riffle: the card eases up a little, no zoom —
+          // click (press) to lift and read it
+          ty += 0.22;
+          tz += 0.2;
+          ts = 1.06;
+          rz = -off * 0.03;
+          const nx = clamp((this.pointer.x - tx) / (CARD_W / 2), -1, 1);
+          ry = nx * 0.12;
         }
       }
 

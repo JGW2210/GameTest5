@@ -85,6 +85,29 @@ export const CARDS = {
     desc: 'Fills most of a tile (size 2). Telekinesis may hurl it anywhere.',
     flavor: 'Just a rock. Kinaeto is fond of rocks.',
   },
+  adept: {
+    key: 'adept',
+    name: 'Twin-Flame Adept',
+    type: 'fist',
+    cost: 2,
+    hp: 3,
+    atk: 1,
+    multistrike: 2,
+    desc: 'MULTISTRIKE 2: strikes twice in every clash.',
+    flavor: 'One hand for the blow, one for the echo.',
+  },
+  chorus: {
+    key: 'chorus',
+    name: 'Cinder Chorus',
+    type: 'sign',
+    cost: 2,
+    hp: 2,
+    atk: 1,
+    range: 4,
+    sap: true,
+    desc: 'Range 4. SAP: each bolt sears −1 atk from its target. Immovable.',
+    flavor: 'They sing the fight out of men.',
+  },
 
   // Kinaetic Rites — cast through Kinaeto himself. They cost no Impetus but
   // consume your single Kinaetic focus for the turn.
@@ -138,6 +161,7 @@ export const ENEMIES = {
     hp: 4,
     atk: 2,
     desc: 'Advances 1 tile. Attacks defenders in its way.',
+    flavor: 'He believes. That is the whole problem.',
   },
   hound: {
     key: 'hound',
@@ -147,6 +171,7 @@ export const ENEMIES = {
     hp: 2,
     atk: 1,
     desc: 'Advances 2 tiles per turn.',
+    flavor: 'Faster than prayer.',
   },
   crossbow: {
     key: 'crossbow',
@@ -156,6 +181,7 @@ export const ENEMIES = {
     hp: 2,
     atk: 2,
     desc: 'Shoots the nearest cultist within 3 tiles.',
+    flavor: 'One eye shut, one heart closed.',
   },
   shieldbearer: {
     key: 'shieldbearer',
@@ -166,6 +192,7 @@ export const ENEMIES = {
     hp: 8,
     atk: 1,
     desc: 'ARMOR 1. Advances every other turn.',
+    flavor: 'A church door that walks.',
   },
   boss: {
     key: 'boss',
@@ -177,6 +204,7 @@ export const ENEMIES = {
     hp: 26,
     atk: 4,
     desc: 'ARMOR 1. Too heavy to Move or Push. Crush is halved. Every 2nd turn: Consecration — 2 damage to every cultist on his path.',
+    flavor: 'Gold and certainty.',
   },
   inquisitor: {
     key: 'inquisitor',
@@ -188,6 +216,7 @@ export const ENEMIES = {
     hp: 60,
     atk: 9,
     desc: 'The church made flesh. His Judgement stuns every faithful soul at once and cracks stone itself.',
+    flavor: 'Rome is wherever he stands.',
   },
 };
 
@@ -215,7 +244,7 @@ export const TUTORIAL_DECK = [
 // scripted: the battle cannot be won, only understood.
 export const TUTORIAL_BATTLE = {
   name: 'The First Night',
-  obeliskHp: 20,
+  obeliskHp: 50, // the old obelisk at full power — everything the player will lose
   noVictory: true,
   waves: [
     {
@@ -241,16 +270,13 @@ export const TUTORIAL_BATTLE = {
 };
 
 // Battle 1 — "The Lower Gate".
-// Wave timing per design:
-//  - Wave 1 is forewarned at the start of turn 1 and emerges when turn 1 ends.
-//  - Wave 2 is forewarned at the end of turn 4 and emerges at the end of turn 5.
-//  - Wave 3 is forewarned at the end of turn 8 and emerges at the end of turn 9.
-//  - The boss wave is forewarned at the end of turn 10 and emerges on turn 11,
-//    always on the centre path.
+// Wave cadence tightened for pace: warned one turn, spawned the next, with
+// two-turn breathers — warn 0/spawn 1, warn 3/spawn 4, warn 6/spawn 7, and
+// the boss warned at 8, arriving on turn 9 up the centre path.
 // Paths: 0 = left, 1 = middle, 2 = right.
 export const BATTLE_ONE = {
   name: 'The Lower Gate',
-  obeliskHp: 20,
+  obeliskHp: 10, // the rebuilt obelisk is young and fragile — square one
   waves: [
     {
       warnAtEnd: 0, // shown at battle start
@@ -261,8 +287,8 @@ export const BATTLE_ONE = {
       ],
     },
     {
-      warnAtEnd: 4,
-      spawnAtEnd: 5,
+      warnAtEnd: 3,
+      spawnAtEnd: 4,
       spawns: [
         { path: 1, enemy: 'hound' },
         { path: 2, enemy: 'footman' },
@@ -270,8 +296,8 @@ export const BATTLE_ONE = {
       ],
     },
     {
-      warnAtEnd: 8,
-      spawnAtEnd: 9,
+      warnAtEnd: 6,
+      spawnAtEnd: 7,
       spawns: [
         { path: 0, enemy: 'shieldbearer' },
         { path: 1, enemy: 'footman' },
@@ -280,8 +306,8 @@ export const BATTLE_ONE = {
       ],
     },
     {
-      warnAtEnd: 10,
-      spawnAtEnd: 11,
+      warnAtEnd: 8,
+      spawnAtEnd: 9,
       isBoss: true,
       spawns: [
         { path: 1, enemy: 'boss' },
@@ -324,16 +350,16 @@ export const DIALOGUE = {
   ],
   tutIntents: 'First: read them. The sigil above each helm confesses what it will do next — advance, strike, worse. Never be surprised.',
   tutPlace: 'Now call a follower. Take the TORCHBEARER ZEALOT from your hand and set it on the tile I have marked. Every follower cries out the moment it lands.',
-  tutBurn: 'Impetus is faith on fire, and it never stretches far enough. Feed the flames the SHROUDED WARDEN from your hand — the card burns, the fire grows by one.',
+  tutBurn: 'Impetus is faith on fire, and two flames a turn never stretch far. Drag the SHROUDED WARDEN into the burning brazier at the left edge — the card burns, the fire grows by one. Any card can feed the flames, always.',
   tutEndTurn: 'Good. End the turn and watch the clash — your ranks always strike first. Use the button at the lower right.',
-  tutTk: 'Now for my favor. Seize a crusader with your mind — click it — and hurl it back the way it came. Once each turn, my reach is yours.',
+  tutTk: 'Now for my favor. Lay your mind on a crusader — press it and drag — and hurl it to another tile. Once each turn, my reach is yours.',
   tutEndTurn2: 'Ha! They do hate that. End the turn.',
   tutRite: 'The rites in your hand are my knuckles. Drag the KINAETIC CRUSH onto a crusader and let it feel what patience weighs.',
   tutEndTurn3: 'More of them on the roads. End the turn — hold your nerve.',
-  tutGaze: 'My Eye rests on one path each turn — the faithful there fight harder, and rites cast there cost you nothing. Set your EYE OF KINAETO upon the watched path.',
+  tutGaze: 'My Eye rests on one path each turn — the faithful there fight harder, and rites cast there cost you nothing. The EYE OF KINAETO asks three flames: burn a card first if you must, then set it upon the watched path.',
   tutBeckon: 'One more gift. Release the BECKONING skyward, and I will press three cards into your hand.',
   tutEndTurn4: 'You have every tool I can give. End the turn.',
-  tutFree: 'The rest is yours, shepherd. Place, burn, hurl, cast — hold the ceremony grounds.',
+  tutFree: 'The rest is yours, shepherd. A tile holds three of the faithful, and the first to arrive stands foremost. Place, burn, hurl, cast — hold the ceremony grounds.',
   tutWave2Warn: 'More boots on the roads. You know what the sigils mean now — answer them.',
   doomWarn: [
     'Wait.',

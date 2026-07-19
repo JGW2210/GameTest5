@@ -55,7 +55,7 @@ export const RULES = {
   drawInitial: 5, // opening hand
   drawPerTurn: 3, // per-turn draw after that (Beckoning cards draw more)
   handMax: 8,
-  impetusPerTurn: 4, // flame energy for calling troops — flat, use it or lose it
+  impetusPerTurn: 2, // flame energy for calling troops — scarce; burning cards is the real economy
   impetusBurnMax: 8, // burning cards can push the pool this high
   kinaeticPerTurn: 1, // Kinaeto reaches through you once per turn
   tileCapacity: 3, // total unit "size" a tile holds per side

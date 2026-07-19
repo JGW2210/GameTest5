@@ -13,7 +13,7 @@
        each other through bare "#game/*" specifiers — resolved here in the
        browser, and by package.json "imports" for Node tests. -->
   <script>
-    const GAME_VERSION = '2026-07-18-2';
+    const GAME_VERSION = '2026-07-19-1';
     const GAME_MODULES = [
       'config', 'data', 'effects', 'battle', 'board', 'scene', 'units',
       'kinaeto', 'cards3d', 'hud', 'meta', 'tutorial', 'hub', 'main',
@@ -35,7 +35,7 @@
     </div>
     <div id="obelisk-wrap">
       <div id="hud-obelisk-text">OBELISK 20 / 20</div>
-      <div id="obelisk-bar"><div id="hud-obelisk-fill"></div></div>
+      <div id="obelisk-bar"><div id="hud-obelisk-fill"></div><div id="obelisk-segs"></div></div>
       <div id="hud-gaze"></div>
     </div>
     <div class="top-group right">
@@ -63,6 +63,26 @@
   <div id="banner"></div>
   <div id="toast"></div>
   <div id="hint"></div>
+
+  <!-- drag drop-zones: USE (right edge) and BURN (by the impetus flames) -->
+  <div id="zone-use">
+    <div class="zone-ring">◎</div>
+    <div class="zone-label">USE</div>
+    <div class="zone-sub">drop the card here,<br/>then choose a tile</div>
+  </div>
+  <div id="zone-burn">
+    <div class="zone-ring">🜂</div>
+    <div class="zone-label">BURN</div>
+    <div class="zone-sub">any card · +1 impetus</div>
+  </div>
+
+  <!-- unit hover tooltip + click-to-inspect card -->
+  <div id="unit-tip"></div>
+  <div id="inspect">
+    <img id="inspect-card" alt="" draggable="false" />
+    <div id="inspect-intent"></div>
+    <div id="inspect-close">click anywhere to close</div>
+  </div>
 
   <!-- Kinaeto dialogue -->
   <div id="dialogue">

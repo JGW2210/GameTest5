@@ -182,7 +182,8 @@ export class World {
 
     this.buildWalls();
     this.buildObeliskPlatform(0x322636, 0x2b2130);
-    this.buildObelisk(1);
+    // The rebuilt obelisk: short, plain, one lonely halo — square one.
+    this.buildObelisk(0.72, 1);
     this.buildPortal(1);
     this.buildEmbers();
   }
@@ -257,7 +258,7 @@ export class World {
       this.addBrazier(px, 3.7, pz, i % 2 === 0);
     }
 
-    this.buildObelisk(1.4);
+    this.buildObelisk(1.4, 3);
     this.buildPortal(1.15);
     this.buildEmbers();
   }
@@ -677,8 +678,9 @@ export class World {
     this.add(steps);
   }
 
-  // scale > 1 builds the sanctum's larger, more grandiose obelisk.
-  buildObelisk(scale = 1) {
+  // scale sizes the whole spire; rings is how many orbit it — the sanctum's
+  // grand obelisk earns three, the rebuilt one barely keeps one.
+  buildObelisk(scale = 1, ringCount = 2) {
     this.obeliskLight = new THREE.PointLight(COLORS.kinaetic, 60 * scale, 26 * scale, 2);
     this.obeliskLight.position.set(OBELISK_POS.x, 5 * scale, OBELISK_POS.z + 1);
     this.add(this.obeliskLight);
@@ -710,9 +712,7 @@ export class World {
     this.obelisk.add(tip);
     this.obeliskTip = tip;
 
-    // Orbiting rune rings — the grand obelisk earns a third.
     this.runeRings = [];
-    const ringCount = scale > 1 ? 3 : 2;
     for (let i = 0; i < ringCount; i++) {
       const ring = new THREE.Mesh(
         new THREE.TorusGeometry((1.5 + i * 0.6) * scale, 0.05 * scale, 6, 24),

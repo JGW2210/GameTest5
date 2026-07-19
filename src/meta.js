@@ -10,9 +10,13 @@ export const DECK_MIN = 15;
 export const DECK_MAX = 25;
 export const FORGE_CHARGES = 3; // free smith upgrades in this pass
 
-// The cult owns its starter deck plus a few spare faithful, so the card
-// altar has real choices to make from the first visit.
-const EXTRA_COLLECTION = ['zealot', 'warden', 'fleet', 'acolyte', 'eye', 'shrine'];
+// The cult owns its starter deck plus a few spare faithful — including two
+// followers that never march by default — so the card altar has real choices
+// to make from the first visit.
+const EXTRA_COLLECTION = [
+  'zealot', 'warden', 'fleet', 'acolyte', 'eye', 'shrine',
+  'adept', 'adept', 'chorus', 'chorus',
+];
 
 function defaultMeta() {
   const collection = {};
