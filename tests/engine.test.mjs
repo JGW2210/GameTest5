@@ -210,5 +210,46 @@ console.log('tutorial scripting: preset, forced spawn, doom');
   check('preset unit is stunned', b.units.get(preset.uid).stunned);
 }
 
+console.log('second-pass balance: impetus, obelisks, gaze');
+{
+  check('impetus per turn is 2', RULES.impetusPerTurn === 2);
+  const b1 = new Battle(BATTLE_ONE);
+  check('battle one obelisk humbled to 10', b1.obeliskMaxHp === 10);
+  const bt = new Battle(TUTORIAL_BATTLE, { deck: TUTORIAL_DECK, noShuffle: true });
+  check('tutorial obelisk at full power 50', bt.obeliskMaxHp === 50);
+  const b = new Battle(BATTLE_ONE); // untouched gaze state (fresh() pins it)
+  let repeats = 0;
+  for (let i = 0; i < 25; i++) {
+    if (b.gazePath === b.nextGazePath) repeats++;
+    b.gazePath = b.nextGazePath;
+    b.nextGazePath = b.rollGaze(b.gazePath);
+  }
+  check('the gaze never watches the same path twice running', repeats === 0, `repeats=${repeats}`);
+}
+
+console.log('new keywords: multistrike & sap');
+{
+  const b = fresh();
+  b.hand = ['adept'];
+  b.impetus = 8;
+  b.playCard(0, 0, 2);
+  mkEnemy(b, 901, 0, 2, { hp: 4 });
+  const events = [];
+  b._stunnedShown = new Set();
+  b.phaseClashes(events);
+  const hits = events.filter((ev) => ev.type === 'attack' && ev.targetUid === 901);
+  check('adept strikes twice in one clash', hits.length === 2, `hits=${hits.length}`);
+
+  const b2 = fresh();
+  b2.hand = ['chorus'];
+  b2.impetus = 8;
+  b2.playCard(0, 1, 1);
+  const e = mkEnemy(b2, 902, 1, 4, { hp: 9, atk: 2 });
+  const evs = [];
+  b2._stunnedShown = new Set();
+  b2.phaseCasts(evs);
+  check('chorus bolt saps the target', e.atk === 1 && evs.some((ev) => ev.type === 'sap'), `atk=${e.atk}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -4,12 +4,12 @@
 // Stations are raycast in the 3D scene; their workings open as DOM panels.
 
 import { DIALOGUE, CARDS } from '#game/data.js';
+import { setCardSource, cardFaceDataURL } from '#game/cards3d.js';
 import {
   DECK_MIN, DECK_MAX, deckCount, addToDeck, removeFromDeck,
   canUpgrade, applyUpgrade, forgeChargesLeft, effectiveCards,
 } from '#game/meta.js';
 
-const TYPE_GLYPHS = { fist: '✊', palm: '✋', sign: '🖐', object: '⛰', tk: '◉' };
 const HUB_HINT = 'The refuge is quiet. Choose a station — altar, forge, or the severed link.';
 
 export class Hub {
@@ -25,6 +25,8 @@ export class Hub {
   enter() {
     const { world, board, hud, cardHand } = this.ctx;
     this.active = true;
+    // card faces in the panels must show the smith's work
+    setCardSource(effectiveCards(this.ctx.meta));
     world.setStage('hub');
     board.setVisible(false);
     board.clearWarnings();
@@ -101,51 +103,47 @@ export class Hub {
     if (onWire) onWire(this.panelEl);
   }
 
-  cardRowHtml(key, def, middle, buttons) {
-    const stars = def.forged ? ` <span class="stars">${'★'.repeat(def.forged)}</span>` : '';
-    const stats = def.type === 'tk'
-      ? `Rite — ${def.desc}`
-      : `${def.cost}🔥 · ⚔ ${def.atk} · ♥ ${def.hp} — ${def.desc}`;
+  // A cell in the panel grids: the card exactly as it appears in battle.
+  cardCellHtml(key, { count = '', buttons = '', dim = false } = {}) {
     return `
-      <div class="card-row" data-key="${key}">
-        <div class="glyph">${TYPE_GLYPHS[def.type] || '◆'}</div>
-        <div class="info">
-          <div class="name">${def.name}${stars}</div>
-          <div class="stats">${stats}</div>
-        </div>
-        <div class="count">${middle}</div>
-        ${buttons}
+      <div class="card-cell${dim ? ' none-in-deck' : ''}" data-key="${key}">
+        <img src="${cardFaceDataURL(key)}" alt="${key}" draggable="false" />
+        ${count ? `<div class="cell-count">${count}</div>` : ''}
+        ${buttons ? `<div class="cell-btns">${buttons}</div>` : ''}
       </div>`;
   }
 
-  // The Altar of Names: choose which owned cards march in the deck.
+  // The Altar of Names: the cards themselves, as they appear in battle.
   openDeckPanel() {
     const { meta } = this.ctx;
-    const cards = effectiveCards(meta);
     const keys = Object.keys(CARDS).filter((k) => (meta.collection[k] || 0) > 0);
-    const rows = keys.map((key) => {
+    const cells = keys.map((key) => {
       const inDeck = deckCount(meta, key);
       const owned = meta.collection[key] || 0;
-      return this.cardRowHtml(key, cards[key], `${inDeck} / ${owned}`, `
-        <button class="deck-minus" ${inDeck === 0 ? 'disabled' : ''}>−</button>
-        <button class="deck-plus" ${inDeck >= owned ? 'disabled' : ''}>+</button>`);
+      return this.cardCellHtml(key, {
+        dim: inDeck === 0,
+        count: `${inDeck} <span class="dim">of ${owned} march</span>`,
+        buttons: `
+          <button class="deck-minus" ${inDeck === 0 ? 'disabled' : ''}>−</button>
+          <button class="deck-plus" ${inDeck >= owned ? 'disabled' : ''}>+</button>`,
+      });
     }).join('');
 
     this.showPanel(`
       <h1>THE ALTAR OF NAMES</h1>
       <h2>Choose who marches. The rest keep the fires lit at home.</h2>
       <div class="panel-note">DECK ${meta.deck.length} — no fewer than ${DECK_MIN}, no more than ${DECK_MAX}</div>
-      ${rows}
+      <div class="card-grid">${cells}</div>
       <button class="panel-close">Done</button>
     `, (el) => {
-      el.querySelectorAll('.card-row').forEach((row) => {
-        const key = row.dataset.key;
-        row.querySelector('.deck-plus').addEventListener('click', () => {
+      el.querySelectorAll('.card-cell').forEach((cell) => {
+        const key = cell.dataset.key;
+        cell.querySelector('.deck-plus').addEventListener('click', () => {
           const r = addToDeck(meta, key);
           if (!r.ok) this.ctx.hud.toast(r.reason);
           this.openDeckPanel();
         });
-        row.querySelector('.deck-minus').addEventListener('click', () => {
+        cell.querySelector('.deck-minus').addEventListener('click', () => {
           const r = removeFromDeck(meta, key);
           if (!r.ok) this.ctx.hud.toast(r.reason);
           this.openDeckPanel();
@@ -157,32 +155,40 @@ export class Hub {
   // The Cold Forge: a few free strengthenings until a real economy arrives.
   openSmithPanel() {
     const { meta } = this.ctx;
-    const cards = effectiveCards(meta);
     const charges = forgeChargesLeft(meta);
     const keys = Object.keys(CARDS).filter((k) => canUpgrade(k) && (meta.collection[k] || 0) > 0);
-    const rows = keys.map((key) => {
-      const def = cards[key];
-      return this.cardRowHtml(key, def, '', `
-        <button class="forge-btn forge-atk" ${charges === 0 ? 'disabled' : ''}>+1 ⚔</button>
-        <button class="forge-btn forge-hp" ${charges === 0 ? 'disabled' : ''}>+1 ♥</button>`);
-    }).join('');
+    const cells = keys.map((key) =>
+      this.cardCellHtml(key, {
+        buttons: `
+          <button class="forge-atk" ${charges === 0 ? 'disabled' : ''}>+1 ⚔</button>
+          <button class="forge-hp" ${charges === 0 ? 'disabled' : ''}>+1 ♥</button>`,
+      })
+    ).join('');
 
     this.showPanel(`
       <h1>THE COLD FORGE</h1>
       <h2>The smith works for faith alone — for now. Each strengthening touches every copy.</h2>
       <div class="panel-note">${charges} EMBER${charges === 1 ? '' : 'S'} LEFT IN THE FORGE</div>
-      ${rows}
+      <div class="card-grid">${cells}</div>
       <button class="panel-close">Done</button>
     `, (el) => {
-      el.querySelectorAll('.card-row').forEach((row) => {
-        const key = row.dataset.key;
-        row.querySelector('.forge-atk').addEventListener('click', () => {
-          if (applyUpgrade(meta, key, 'atk')) this.openSmithPanel();
-          else this.ctx.hud.toast('The forge is cold — no embers remain');
+      el.querySelectorAll('.card-cell').forEach((cell) => {
+        const key = cell.dataset.key;
+        cell.querySelector('.forge-atk').addEventListener('click', () => {
+          if (applyUpgrade(meta, key, 'atk')) {
+            setCardSource(effectiveCards(meta)); // re-render faces with the new stats
+            this.openSmithPanel();
+          } else {
+            this.ctx.hud.toast('The forge is cold — no embers remain');
+          }
         });
-        row.querySelector('.forge-hp').addEventListener('click', () => {
-          if (applyUpgrade(meta, key, 'hp')) this.openSmithPanel();
-          else this.ctx.hud.toast('The forge is cold — no embers remain');
+        cell.querySelector('.forge-hp').addEventListener('click', () => {
+          if (applyUpgrade(meta, key, 'hp')) {
+            setCardSource(effectiveCards(meta));
+            this.openSmithPanel();
+          } else {
+            this.ctx.hud.toast('The forge is cold — no embers remain');
+          }
         });
       });
     });

@@ -28,7 +28,15 @@ export class Hud {
       dream: $('dream'),
       dreamText: $('dream-text'),
       flash: $('flash'),
+      obeliskSegs: $('obelisk-segs'),
+      zoneUse: $('zone-use'),
+      zoneBurn: $('zone-burn'),
+      unitTip: $('unit-tip'),
+      inspect: $('inspect'),
+      inspectCard: $('inspect-card'),
+      inspectIntent: $('inspect-intent'),
     };
+    this.el.inspect.addEventListener('click', () => this.hideInspect());
     this.onEndTurn = null;
     this._dialogueResolve = null;
     this._dreamResolve = null;
@@ -99,6 +107,70 @@ export class Hud {
     this.el.obeliskFill.style.width = `${frac * 100}%`;
     this.el.obeliskFill.classList.toggle('low', frac < 0.35);
     this.el.obeliskText.textContent = `OBELISK ${Math.max(hp, 0)} / ${max}`;
+    // pip dividers, one segment per point of stone
+    if (this._obeliskSegMax !== max) {
+      this._obeliskSegMax = max;
+      const seg = 100 / max;
+      this.el.obeliskSegs.style.backgroundImage =
+        `repeating-linear-gradient(90deg, transparent 0, transparent calc(${seg}% - 1.5px), #0d0708 calc(${seg}% - 1.5px), #0d0708 ${seg}%)`;
+    }
+  }
+
+  // ---- drag drop-zones (USE on the right, BURN by the flames) --------------
+
+  // state: null (hidden) | 'drag' (both zones live) | 'placing' (use zone
+  // stays lit while a target is chosen)
+  setDropZones(state, useEnabled = true) {
+    this.el.zoneUse.classList.toggle('show', state !== null);
+    this.el.zoneUse.classList.toggle('disabled', !useEnabled);
+    this.el.zoneUse.classList.toggle('armed', state === 'placing');
+    this.el.zoneBurn.classList.toggle('show', state === 'drag');
+    if (!state) {
+      this.el.zoneUse.classList.remove('hot');
+      this.el.zoneBurn.classList.remove('hot');
+    }
+  }
+
+  setZoneHot(zone, hot) {
+    const el = zone === 'use' ? this.el.zoneUse : this.el.zoneBurn;
+    el.classList.toggle('hot', hot);
+  }
+
+  zoneAt(clientX, clientY) {
+    for (const [name, el] of [['burn', this.el.zoneBurn], ['use', this.el.zoneUse]]) {
+      if (!el.classList.contains('show')) continue;
+      const r = el.getBoundingClientRect();
+      if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) return name;
+    }
+    return null;
+  }
+
+  // ---- unit hover tooltip & card inspector ---------------------------------
+
+  showUnitTip(text, x, y) {
+    const tip = this.el.unitTip;
+    tip.textContent = text;
+    tip.style.left = `${Math.min(x + 18, window.innerWidth - 260)}px`;
+    tip.style.top = `${y - 14}px`;
+    tip.classList.add('show');
+  }
+
+  hideUnitTip() {
+    this.el.unitTip.classList.remove('show');
+  }
+
+  showInspect(dataUrl, intentText) {
+    this.el.inspectCard.src = dataUrl;
+    this.el.inspectIntent.textContent = intentText || '';
+    this.el.inspect.classList.add('show');
+  }
+
+  hideInspect() {
+    this.el.inspect.classList.remove('show');
+  }
+
+  get inspectOpen() {
+    return this.el.inspect.classList.contains('show');
   }
 
   setGaze(current, next) {
@@ -136,10 +208,12 @@ export class Hud {
   }
 
   // Shows lines one at a time; only a click (or Space) advances. Resolves when
-  // every line has been shown and dismissed.
+  // every line has been shown and dismissed. While a dialogue is open the hint
+  // and toast lines hide (body class) so centre-screen text never stacks.
   dialogue(lines) {
     this._dialogueQueue = Array.isArray(lines) ? lines.slice() : [lines];
     this.el.dialogue.classList.add('show');
+    document.body.classList.add('dialogue-open');
     return new Promise((resolve) => {
       this._dialogueResolve = resolve;
       this.nextDialogueLine();
@@ -156,6 +230,7 @@ export class Hud {
       this.nextDialogueLine();
     } else {
       this.el.dialogue.classList.remove('show');
+      document.body.classList.remove('dialogue-open');
       const r = this._dialogueResolve;
       this._dialogueResolve = null;
       r();

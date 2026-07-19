@@ -569,3 +569,196 @@ body {
 
 .overlay-btns { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 #overlay button.secondary { font-size: 15px; opacity: 0.75; border-bottom-color: rgba(155, 108, 255, 0.35); }
+
+/* ---------- centre-screen text discipline ---------- */
+
+/* while Kinaeto speaks, nothing else competes for the centre of the screen */
+body.dialogue-open #hint,
+body.dialogue-open #toast,
+body.dialogue-open #unit-tip { opacity: 0 !important; }
+
+/* ---------- obelisk pip segments ---------- */
+
+#obelisk-bar { position: relative; }
+#obelisk-segs { position: absolute; inset: 0; pointer-events: none; }
+
+/* ---------- drag drop-zones ---------- */
+
+#zone-use, #zone-burn {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  border: 1px dashed rgba(155, 108, 255, 0.4);
+  border-radius: 16px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, border-color 0.2s, box-shadow 0.2s, background 0.2s;
+  z-index: 4;
+}
+#zone-use {
+  right: 18px;
+  top: 22%;
+  bottom: 34%;
+  width: 130px;
+  color: var(--violet);
+}
+#zone-burn {
+  left: 16px;
+  bottom: 95px;
+  width: 150px;
+  height: 140px;
+  color: var(--flame);
+  border-color: rgba(255, 154, 77, 0.45);
+}
+#zone-use.show, #zone-burn.show { opacity: 0.85; }
+#zone-use.disabled { opacity: 0.3; filter: grayscale(0.8); }
+#zone-use.hot {
+  opacity: 1;
+  border-color: var(--violet);
+  background: rgba(155, 108, 255, 0.12);
+  box-shadow: 0 0 30px rgba(155, 108, 255, 0.35), inset 0 0 24px rgba(155, 108, 255, 0.15);
+}
+#zone-use.armed {
+  opacity: 1;
+  border-style: solid;
+  border-color: var(--violet);
+  box-shadow: 0 0 24px rgba(155, 108, 255, 0.3);
+}
+#zone-burn.hot {
+  opacity: 1;
+  border-color: var(--flame);
+  background: rgba(255, 138, 60, 0.12);
+  box-shadow: 0 0 30px rgba(255, 138, 60, 0.4), inset 0 0 24px rgba(255, 138, 60, 0.18);
+}
+.zone-ring {
+  font-size: 34px;
+  line-height: 1;
+  text-shadow: 0 0 16px currentColor;
+}
+.zone-label {
+  font-size: 15px;
+  letter-spacing: 5px;
+  text-shadow: 0 0 12px currentColor, 0 2px 4px #000;
+}
+.zone-sub {
+  font-size: 10px;
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+/* ---------- unit tooltip & inspector ---------- */
+
+#unit-tip {
+  position: fixed;
+  max-width: 240px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: var(--parchment);
+  background: rgba(10, 6, 14, 0.88);
+  border: 1px solid rgba(155, 108, 255, 0.35);
+  border-radius: 7px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 12;
+}
+#unit-tip.show { opacity: 1; }
+
+#inspect {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: radial-gradient(ellipse at center, rgba(14, 8, 20, 0.55), rgba(4, 2, 7, 0.88));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+  cursor: pointer;
+  z-index: 16;
+}
+#inspect.show { opacity: 1; pointer-events: auto; }
+#inspect-card {
+  height: min(62vh, 480px);
+  border-radius: 14px;
+  box-shadow: 0 0 50px rgba(155, 108, 255, 0.35), 0 12px 40px #000;
+}
+#inspect-intent {
+  max-width: 420px;
+  text-align: center;
+  font-size: 15px;
+  font-family: Georgia, serif;
+  font-style: italic;
+  color: var(--eldritch);
+  text-shadow: 0 0 12px var(--eldritch-glow), 0 2px 4px #000;
+}
+#inspect-close {
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--dim);
+}
+
+/* ---------- hub card grid ---------- */
+
+.card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.card-cell { width: 148px; }
+.card-cell img {
+  width: 100%;
+  display: block;
+  border-radius: 10px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.6);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.card-cell:hover img {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.7), 0 0 22px rgba(155, 108, 255, 0.25);
+}
+.card-cell.none-in-deck img { filter: grayscale(0.85) brightness(0.6); }
+.card-cell .cell-count {
+  margin-top: 6px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  text-align: center;
+  color: var(--parchment);
+}
+.card-cell .cell-count .dim { color: var(--dim); }
+.card-cell .cell-btns {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 5px;
+}
+.card-cell .cell-btns button {
+  font-family: var(--runic);
+  font-size: 15px;
+  min-width: 34px;
+  height: 28px;
+  padding: 0 8px;
+  color: var(--parchment);
+  background: none;
+  border: 1px solid rgba(155, 108, 255, 0.4);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.15s, text-shadow 0.15s;
+}
+.card-cell .cell-btns button:hover:not(:disabled) {
+  border-color: var(--violet);
+  text-shadow: 0 0 12px var(--violet-glow);
+}
+.card-cell .cell-btns button:disabled { opacity: 0.25; cursor: default; }

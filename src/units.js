@@ -355,14 +355,31 @@ function makeHpBar() {
   return sprite;
 }
 
+// Health reads as pips, one per point, so "he has 3 left" is a glance, not an
+// estimate. Beyond 12 hp (bosses) pips would smear, so those fall back to a
+// bar notched every 5 points.
 export function drawHpBar(sprite, hp, maxHp) {
   const ctx = sprite.userData.canvas.getContext('2d');
   ctx.clearRect(0, 0, 64, 12);
   ctx.fillStyle = 'rgba(0,0,0,0.75)';
   ctx.fillRect(0, 0, 64, 12);
   const frac = Math.max(hp, 0) / maxHp;
-  ctx.fillStyle = frac > 0.4 ? '#6be08a' : '#e0574f';
-  ctx.fillRect(2, 2, 60 * frac, 8);
+  const color = frac > 0.4 ? '#6be08a' : '#e0574f';
+  if (maxHp <= 12) {
+    const gap = maxHp > 8 ? 1 : 2;
+    const w = (60 - gap * (maxHp - 1)) / maxHp;
+    for (let i = 0; i < maxHp; i++) {
+      ctx.fillStyle = i < hp ? color : 'rgba(255,255,255,0.14)';
+      ctx.fillRect(2 + i * (w + gap), 2, w, 8);
+    }
+  } else {
+    ctx.fillStyle = color;
+    ctx.fillRect(2, 2, 60 * frac, 8);
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    for (let v = 5; v < maxHp; v += 5) {
+      ctx.fillRect(2 + (60 * v) / maxHp, 1, 1.5, 10);
+    }
+  }
   sprite.userData.texture.needsUpdate = true;
 }
 

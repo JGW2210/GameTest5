@@ -69,7 +69,18 @@ export class Battle {
     this.result = null;
     this.arrivalSeq = 1; // stack ordering: lowest arrival = front of tile
     this.gazePath = Math.floor(Math.random() * PATHS);
-    this.nextGazePath = Math.floor(Math.random() * PATHS);
+    this.nextGazePath = this.rollGaze(this.gazePath);
+  }
+
+  // The Eye never watches the same path twice running — the foretold path is
+  // always somewhere new, so the herald ring is always worth reading.
+  rollGaze(exclude) {
+    if (PATHS < 2) return 0;
+    let p;
+    do {
+      p = Math.floor(Math.random() * PATHS);
+    } while (p === exclude);
+    return p;
   }
 
   // ---- gaze ---------------------------------------------------------------
@@ -229,6 +240,8 @@ export class Battle {
       rage: !!def.rage,
       armor: def.armor || 0,
       sweep: !!def.sweep,
+      multistrike: def.multistrike || 0,
+      sap: !!def.sap,
       onDeath: def.onDeath || null,
       ward: 0,
       size: def.size || 1,
@@ -263,6 +276,8 @@ export class Battle {
       rage: !!def.rage,
       armor: def.armor || 0,
       sweep: !!def.sweep,
+      multistrike: def.multistrike || 0,
+      sap: !!def.sap,
       onDeath: def.onDeath || null,
       ward: 0,
       size: def.size || 1,
@@ -453,6 +468,10 @@ export class Battle {
       attacker.atk += 1;
       events.push({ type: 'rage', uid: attacker.uid, atk: attacker.atk, batch: opts.batch });
     }
+    if (attacker.sap && !opts.noRage && target.hp > 0 && target.atk > 0) {
+      target.atk -= 1;
+      events.push({ type: 'sap', uid: target.uid, atk: target.atk, batch: opts.batch });
+    }
     if (target.hp <= 0) {
       this.units.delete(target.uid);
       events.push({ type: 'die', uid: target.uid, batch: opts.batch });
@@ -485,7 +504,7 @@ export class Battle {
     // recover from stuns, turn the gaze, next turn
     for (const u of this.units.values()) u.stunned = false;
     this.gazePath = this.nextGazePath;
-    this.nextGazePath = Math.floor(Math.random() * PATHS);
+    this.nextGazePath = this.rollGaze(this.gazePath);
     events.push({ type: 'gaze', path: this.gazePath, next: this.nextGazePath });
 
     this.turn++;
@@ -546,10 +565,13 @@ export class Battle {
         if (!this.units.has(pu.uid) || pu.type === 'object') continue;
         if (this.skipIfStunned(events, pu)) continue;
         if (pu.type === 'sign') continue; // signs already cast this turn
-        const foe = this.unitAt(path, row, 'enemy');
-        if (!foe) break;
         if (pu.atk <= 0) continue;
-        this.dealDamage(events, pu, foe, this.effAtk(pu), 'attack', { batch });
+        const strikes = Math.max(pu.multistrike || 0, 1);
+        for (let s = 0; s < strikes; s++) {
+          const foe = this.unitAt(path, row, 'enemy');
+          if (!foe) break;
+          this.dealDamage(events, pu, foe, this.effAtk(pu), 'attack', { batch });
+        }
       }
 
       // survivors strike back at the front cultist

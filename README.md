@@ -28,8 +28,9 @@ raise a new obelisk to re-establish his link to the material plane.
 
 **The Sanctum (hub)** is the between-battles cave, with three clickable stations:
 
-- **The Altar of Names** — the deck manager. Toggle which owned cards march (deck of
-  15–25 from the collection).
+- **The Altar of Names** — the deck manager. A grid of the actual card faces (the same
+  canvas art used in battle, forge stars included); toggle which owned copies march
+  (deck of 15–25 from the collection).
 - **The Cold Forge** — the smith. Three free upgrade "embers" for now (+1 ⚔ or +1 ♥ to
   every copy of a troop card); a real economy arrives with later passes.
 - **The Severed Link** — Kinaeto. He confirms you are ready and opens the war map, which
@@ -37,6 +38,31 @@ raise a new obelisk to re-establish his link to the material plane.
 
 Hub state (deck, collection, forgings, story progress) persists in `localStorage`
 (`kinaeto-meta-v1`).
+
+## Battle interaction model (second pass)
+
+- **Cards**: hovering the fan is a subtle filing riffle — no zoom. Pressing a card
+  lifts and enlarges it for reading; carrying it up toward the board shrinks it out of
+  the way. Two glowing drop-zones appear while dragging: **USE** (right edge — drop the
+  card there, then click a tile/target at leisure) and **BURN** (left, by the flames —
+  any card, playable or not, burns for +1 Impetus). Direct drops onto tiles/units still
+  work as the fast path.
+- **Impetus is 2 per turn** — burning cards is the real economy, not a corner case.
+- **Units**: hovering any unit shows a tooltip naming it and spelling out its intent in
+  words; clicking a unit (press and release in place) opens its full card — enemies
+  have card faces too. Pressing and *dragging* a grabbable unit is telekinesis: tiles
+  light up, release to throw. A thrown unit always lands facing its true direction.
+- **Health** reads as pips (one per point) up to 12 hp; bosses fall back to a notched
+  bar. The obelisk bar is segmented per point too.
+- **Dialogue discipline**: while Kinaeto speaks, hints/toasts/tooltips hide and any
+  click simply advances his dialogue; battle one's first wave warning rides along with
+  his intro speech instead of a second camera trip.
+- **Keywords** now include MULTISTRIKE (Twin-Flame Adept) and SAP (Cinder Chorus),
+  alongside RAGE / WARD / ARMOR / SWEEP / FAST / arrival cries — both new cards start
+  in the collection, not the deck, so the altar matters from the first visit.
+- **Obelisks tell the story**: the tutorial defends the old obelisk at full power
+  (50 hp, three halos); battle one guards the rebuilt stub (10 hp, one halo, short).
+- **Waves come faster** in battle one: warn 0/spawn 1, 3/4, 6/7, boss at 8/9.
 
 ## Playing
 
@@ -201,9 +227,9 @@ brawl. All balance lives in `RULES` (`src/config.js`) and the card/enemy defs
   unit takes one full spin that lands exactly on `userData.baseFacing`, instead of the
   old per-frame `rotation.y += 0.06` that left units facing a random direction.
 
-**Testing.** `node tests/engine.test.mjs` runs the 41-check engine suite (stacks,
+**Testing.** `node tests/engine.test.mjs` runs the 47-check engine suite (stacks,
 clashes, breakthrough, burn, gaze, intents, cries, rites, injectable decks, tutorial
-scripting/doom). For interaction testing the page exposes `window.__game` (battle, mode,
+scripting/doom, multistrike/sap, balance invariants). For interaction testing the page exposes `window.__game` (battle, mode,
 state, tutorial, hub, meta, board, cardHand, unitViews, world, plus `_test` helpers) —
 Playwright scripts drive real drags by projecting mesh positions through `world.camera`
 to screen coordinates. Dialogue advances only on click/Space, so automated runs must
