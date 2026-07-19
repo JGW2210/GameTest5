@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <title>KINAETO — Beneath the Flame</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='80' font-size='80'>🜏</text></svg>" />
   <link rel="preload" href="vendor/fonts/uncial-antiqua-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin />
@@ -13,15 +13,25 @@
        each other through bare "#game/*" specifiers — resolved here in the
        browser, and by package.json "imports" for Node tests. -->
   <script>
-    const GAME_VERSION = '2026-07-19-1';
+    const GAME_VERSION = '2026-07-19-2';
     const GAME_MODULES = [
       'config', 'data', 'effects', 'battle', 'board', 'scene', 'units',
       'kinaeto', 'cards3d', 'hud', 'meta', 'tutorial', 'hub', 'main',
     ];
     const imports = { three: `./vendor/three.module.min.js?v=${GAME_VERSION}` };
     for (const m of GAME_MODULES) imports[`#game/${m}.js`] = `./src/${m}.js?v=${GAME_VERSION}`;
-    document.write(`<script type="importmap">${JSON.stringify({ imports })}<\/script>`);
-    document.write(`<link rel="stylesheet" href="style.css?v=${GAME_VERSION}" />`);
+    // Inserted via DOM, not document.write — mobile Chrome's intervention
+    // silently drops written scripts, which killed the game on phones.
+    // Synchronous insertion during head parsing still lands the import map
+    // before the (deferred) module entry point runs.
+    const im = document.createElement('script');
+    im.type = 'importmap';
+    im.textContent = JSON.stringify({ imports });
+    document.currentScript.after(im);
+    const sheet = document.createElement('link');
+    sheet.rel = 'stylesheet';
+    sheet.href = `style.css?v=${GAME_VERSION}`;
+    document.head.appendChild(sheet);
   </script>
 </head>
 <body>
@@ -113,6 +123,13 @@
 
   <!-- menu / victory / defeat -->
   <div id="overlay"></div>
+
+  <!-- portrait phones are asked to turn — the battlefield demands the wide view -->
+  <div id="rotate">
+    <div id="rotate-phone"></div>
+    <div id="rotate-title">TURN YOUR DEVICE</div>
+    <div id="rotate-sub">The three paths only fit the wide way round.<br/>Kinaeto will wait. He is patient.</div>
+  </div>
 
   <!-- entry point goes through the import map so it gets the version stamp -->
   <script type="module">import '#game/main.js';</script>

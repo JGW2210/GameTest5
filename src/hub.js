@@ -206,12 +206,12 @@ export class Hub {
           <path d="M 140 235 C 200 190, 250 160, 300 120 S 390 70, 420 55"
                 stroke="rgba(155,108,255,0.35)" stroke-width="2" stroke-dasharray="3 8" stroke-linecap="round"/>
         </svg>
-        <div class="map-node" id="map-node-1" style="left: 140px; top: 225px;">
+        <div class="map-node" id="map-node-1" style="left: 27%; top: 72%;">
           <div class="sigil">🜏</div>
           <div class="label">I · THE LOWER GATE</div>
           <div class="sub">${cleared ? 'held once — the crusade returns' : 'the crusade musters here'}</div>
         </div>
-        <div class="map-node locked" style="left: 420px; top: 60px;">
+        <div class="map-node locked" style="left: 81%; top: 20%;">
           <div class="sigil">?</div>
           <div class="label">II · THE UPPER CAVES</div>
           <div class="sub">the way is still dark</div>
