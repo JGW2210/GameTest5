@@ -921,6 +921,9 @@ window.addEventListener('pointermove', (e) => {
 window.addEventListener('pointerdown', (e) => {
   if (e.button === 2) return;
   setPointer(e);
+  // Touch taps arrive with no hover history — the card fan's slot math reads
+  // the last pointer position, so feed it the tap point before any picking.
+  cardHand.setPointerNDC(pointer.x, pointer.y);
   // While Kinaeto is speaking, any click just advances his dialogue — the
   // world (and the hidden card fan) can't be poked at behind his words.
   // (A click on the dialogue itself already advances via its own handler.)
@@ -1150,6 +1153,8 @@ window.addEventListener('keydown', (e) => {
 });
 
 // Touch: a horizontal swipe across the centre of the view toggles side views.
+// A touch that lands on a card or a unit belongs to that card or unit (drag
+// to place / telekinesis), never to the swipe.
 let swipeStart = null;
 window.addEventListener('pointerdown', (e) => {
   if (e.pointerType !== 'touch' || mode !== 'idle' || state === 'hub') return;
@@ -1157,7 +1162,7 @@ window.addEventListener('pointerdown', (e) => {
   const ny = e.clientY / window.innerHeight;
   if (nx > 0.15 && nx < 0.85 && ny > 0.1 && ny < 0.72) {
     setPointer(e);
-    if (!pickCard()) swipeStart = { x: e.clientX, y: e.clientY };
+    if (!pickCard() && !pickUnit()) swipeStart = { x: e.clientX, y: e.clientY };
   }
 });
 window.addEventListener('pointerup', (e) => {

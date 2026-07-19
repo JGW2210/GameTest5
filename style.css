@@ -762,3 +762,127 @@ body.dialogue-open #unit-tip { opacity: 0 !important; }
   text-shadow: 0 0 12px var(--violet-glow);
 }
 .card-cell .cell-btns button:disabled { opacity: 0.25; cursor: default; }
+
+/* ==================== mobile: landscape-only, tightened ==================== */
+
+/* ---------- the rotate gate (portrait touch devices) ---------- */
+
+#rotate {
+  position: fixed;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  text-align: center;
+  padding: 0 9vw;
+  background: radial-gradient(ellipse at center, rgba(20, 10, 30, 0.98), rgba(4, 2, 7, 1));
+  z-index: 100;
+}
+#rotate-phone {
+  width: 34px;
+  height: 58px;
+  border: 3px solid var(--violet);
+  border-radius: 8px;
+  box-shadow: 0 0 24px var(--violet-glow), inset 0 0 12px rgba(155, 108, 255, 0.25);
+  animation: rotatephone 2.2s infinite ease-in-out;
+}
+@keyframes rotatephone {
+  0%, 20% { transform: rotate(0deg); }
+  55%, 80% { transform: rotate(90deg); }
+  100% { transform: rotate(90deg); }
+}
+#rotate-title {
+  font-size: 22px;
+  letter-spacing: 6px;
+  color: var(--violet);
+  text-shadow: 0 0 22px var(--violet-glow);
+}
+#rotate-sub {
+  font-size: 14px;
+  font-style: italic;
+  font-family: Georgia, serif;
+  line-height: 1.6;
+  color: var(--dim);
+}
+/* phones and small tablets held upright get the gate; desktops never do */
+@media (orientation: portrait) and (hover: none) and (pointer: coarse) {
+  #rotate { display: flex; }
+}
+
+/* ---------- notched phones: keep the chrome out of the cutouts ---------- */
+
+#topbar {
+  padding-left: max(26px, env(safe-area-inset-left));
+  padding-right: max(26px, env(safe-area-inset-right));
+}
+#resources { left: max(24px, env(safe-area-inset-left)); }
+#btn-endturn { right: max(26px, env(safe-area-inset-right)); }
+#zone-use { right: max(18px, env(safe-area-inset-right)); }
+#zone-burn { left: max(16px, env(safe-area-inset-left)); }
+
+/* ---------- short landscape viewports (phones on their side) ---------- */
+
+@media (max-height: 520px) {
+  #topbar { padding-top: 8px; }
+  #hud-turn { font-size: 15px; letter-spacing: 1px; }
+  #hud-wave, #hud-deck, #hud-discard { font-size: 10px; margin-top: 2px; letter-spacing: 1px; }
+  #obelisk-wrap { width: 230px; }
+  #hud-obelisk-text { font-size: 10px; letter-spacing: 3px; margin-bottom: 3px; }
+  #hud-gaze { font-size: 9px; letter-spacing: 2px; margin-top: 3px; }
+
+  #resources { bottom: 10px; gap: 8px; transform-origin: left bottom; transform: scale(0.72); }
+  #btn-endturn { bottom: 12px; font-size: 15px; letter-spacing: 3px; padding: 8px 4px; }
+
+  #banner { top: 14%; font-size: 16px; letter-spacing: 3px; }
+  #toast { font-size: 12px; bottom: 38%; }
+  #hint { font-size: 10px; bottom: 28%; } /* clear of the card fan's tops */
+
+  #dialogue { top: 7%; width: min(520px, 78vw); }
+  #dialogue.focus { top: 56%; }
+  #dialogue-name { font-size: 10px; letter-spacing: 4px; margin-bottom: 4px; }
+  #dialogue-text { font-size: 14px; line-height: 1.4; }
+  #dialogue-more { font-size: 8px; margin-top: 4px; }
+
+  #zone-use { width: 84px; top: 16%; bottom: 40%; border-radius: 12px; }
+  #zone-burn { width: 100px; height: 86px; bottom: 64px; border-radius: 12px; }
+  .zone-ring { font-size: 22px; }
+  .zone-label { font-size: 11px; letter-spacing: 3px; }
+  .zone-sub { display: none; }
+
+  #unit-tip { font-size: 10px; padding: 4px 8px; max-width: 190px; }
+  #inspect-card { height: min(72vh, 340px); }
+  #inspect-intent { font-size: 12px; max-width: 320px; }
+  #inspect-close { font-size: 8px; }
+
+  #overlay .panel { padding: 14px 18px; max-height: 96vh; }
+  #overlay h1 { font-size: 26px; letter-spacing: 7px; margin-bottom: 4px; }
+  #overlay h2 { font-size: 12px; margin-bottom: 8px; }
+  #overlay p { font-size: 11px; margin-bottom: 7px; }
+  #overlay .rules { max-width: 440px; margin-bottom: 10px; }
+  #overlay .rules p { font-size: 10px; margin-bottom: 5px; }
+  #overlay button { font-size: 15px; padding: 8px 20px; }
+  #overlay button.secondary { font-size: 12px; }
+
+  #panel .panel-box { padding: 12px 14px; max-height: 96vh; }
+  #panel h1 { font-size: 20px; letter-spacing: 5px; }
+  #panel h2 { font-size: 11px; margin-bottom: 8px; }
+  #panel .panel-note { font-size: 10px; margin-bottom: 8px; }
+  .card-grid { gap: 10px; }
+  .card-cell { width: 108px; }
+  .card-cell .cell-count { font-size: 10px; letter-spacing: 1px; margin-top: 3px; }
+  .card-cell .cell-btns button { min-width: 30px; height: 26px; font-size: 13px; }
+  #panel .panel-close { font-size: 14px; padding: 7px 18px; margin-top: 10px; }
+
+  .map-roads { height: 220px; width: min(460px, 78vw); }
+  .map-node .sigil { width: 44px; height: 44px; font-size: 19px; }
+  .map-node .label { font-size: 10px; }
+  .map-node .sub { font-size: 8px; }
+
+  #dream-text { font-size: 15px; max-width: 520px; min-height: 2.6em; }
+  #dream-name { font-size: 10px; letter-spacing: 4px; margin-bottom: 8px; }
+  #dream-eye svg { width: 76px; height: 48px; }
+  #dream-eye { margin-bottom: 12px; }
+  #dream-more { font-size: 8px; margin-top: 14px; }
+}
